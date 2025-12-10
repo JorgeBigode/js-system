@@ -1,0 +1,880 @@
+{% extends 'layout.html' %}
+
+{% block title %}Cadastro de Materiais{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 id="page-title">Cadastro - Chapa</h2>
+        <div class="form-group mb-0">
+            <label for="materialTypeSelect" class="sr-only">Tipo de Material</label>
+            <select class="form-control bg-dark text-white border-secondary" id="materialTypeSelect">
+                <option value="chapa" selected>Chapa</option>
+                <option value="retalho">Retalho</option>
+                <option value="ferramentas">Ferramentas Máquinas</option>
+                <option value="serra">Serra</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="form-container">
+        <!-- Formulário de Chapa -->
+        <div id="chapa-form-section" class="material-form-section">
+            <h4 class="mb-3">Nova Chapa</h4>
+            <div class="card bg-dark text-white mb-4">
+                <div class="card-body">
+                    <form id="chapaForm">
+                        <input type="hidden" id="editingChapaId" value="">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label for="chapaSelect">Tipo de Chapa:</label>
+                                <select class="form-control bg-secondary text-white border-dark" id="chapaSelect"
+                                    name="descricao_material" required>
+                                    <option value="">Selecione um tipo</option>
+                                    <!-- Opções serão preenchidas via JavaScript -->
+                                </select>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="bitola">Bitola (mm):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-secondary text-white border-dark" id="bitola" name="bitola"
+                                    readonly>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-3">
+                                <label for="largura">Largura (mm):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-dark text-white border-secondary" id="largura"
+                                    name="largura">
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="comprimento">Comprimento (mm):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-dark text-white border-secondary" id="comprimento"
+                                    name="comprimento">
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="quant_un">Quant. (un):</label>
+                                <input type="number" step="1" class="form-control bg-dark text-white border-secondary"
+                                    id="quant_un" name="quant_un">
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="quant_kg">Quant. (kg):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-secondary text-white border-dark" id="quant_kg"
+                                    name="quant_kg" readonly>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-primary mr-2" id="saveChapaBtn">Salvar Nova
+                                Chapa</button>
+                            <button type="button" class="btn btn-secondary" id="clearChapaFormBtn">Limpar
+                                Formulário</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <h4 class="mb-3">Chapas em Estoque</h4>
+            <div class="card bg-dark text-white">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover" id="chapaTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Descrição</th>
+                                    <th>Bitola</th>
+                                    <th>Largura</th>
+                                    <th>Comprimento</th>
+                                    <th>Kg</th>
+                                    <th>Un</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dados das chapas serão carregados aqui via JavaScript/AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between mt-3">
+                        <div>
+                            <button type="button" class="btn btn-info" id="readQrCodeChapaBtn">Ler QR Code</button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-warning mr-2" id="editSelectedChapaBtn">Editar
+                                Selecionado</button>
+                            <button type="button" class="btn btn-danger mr-2" id="deleteSelectedChapaBtn">Deletar
+                                Selecionado</button>
+                            <button type="button" class="btn btn-secondary" id="reloadChapaListBtn">Recarregar
+                                Lista</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulário de Retalho (Placeholder) -->
+        <div id="retalho-form-section" class="material-form-section" style="display: none;">
+            <h4 class="mb-3">Novo Retalho</h4>
+            <div class="card bg-dark text-white mb-4">
+                <div class="card-body">
+                    <form id="retalhoForm">
+                        <input type="hidden" id="editingRetalhoId" value="">
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label for="retalhoEstaleiro">Estaleiro:</label>
+                                <select class="form-control bg-dark text-white border-secondary" id="retalhoEstaleiro"
+                                    name="estaleiro" required>
+                                    <option value="">Selecione</option>
+                                    <!-- Opções de estaleiro -->
+                                    {% for i in range(1, 11) %}
+                                    <option value="EST_RET_GALV_{{ '%02d' % i }}">EST_RET_GALV_{{ '%02d' % i }}</option>
+                                    {% endfor %}
+                                    {% for i in range(1, 11) %}
+                                    <option value="EST_RET_PRETA_{{ '%02d' % i }}">EST_RET_PRETA_{{ '%02d' % i }}
+                                    </option>
+                                    {% endfor %}
+                                    <option value="EST_RET_DIV">EST_RET_DIV</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="retalhoChapaBase">Chapa Base:</label>
+                                <select class="form-control bg-dark text-white border-secondary" id="retalhoChapaBase"
+                                    name="chapa_base" required>
+                                    <option value="">Selecione a chapa base</option>
+                                    <!-- Opções de chapa base serão preenchidas via JavaScript -->
+                                </select>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="retalhoDescricao">Descrição:</label>
+                                <input type="text" class="form-control bg-secondary text-white border-dark"
+                                    id="retalhoDescricao" name="descricao_material" readonly>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-2">
+                                <label for="retalhoBitola">Bitola (mm):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-secondary text-white border-dark" id="retalhoBitola"
+                                    name="bitola" readonly>
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="retalhoLargura">Largura (mm):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-dark text-white border-secondary" id="retalhoLargura"
+                                    name="largura">
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="retalhoComprimento">Comprimento (mm):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-dark text-white border-secondary" id="retalhoComprimento"
+                                    name="comprimento">
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="retalhoQuantUn">Quant. (un):</label>
+                                <input type="number" step="1" class="form-control bg-dark text-white border-secondary"
+                                    id="retalhoQuantUn" name="quant_un">
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="retalhoQuantKg">Quant. (kg):</label>
+                                <input type="number" step="0.01"
+                                    class="form-control bg-secondary text-white border-dark" id="retalhoQuantKg"
+                                    name="quant_kg" readonly>
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="retalhoUnMedida">Un. Medida:</label>
+                                <select class="form-control bg-dark text-white border-secondary" id="retalhoUnMedida"
+                                    name="un_medida">
+                                    <option value="KG">KG</option>
+                                    <option value="UN">UN</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group form-check mt-2">
+                            <input type="checkbox" class="form-check-input" id="retalhoReserva" name="reserva">
+                            <label class="form-check-label" for="retalhoReserva">Reserva</label>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-primary mr-2">Salvar Novo Retalho</button>
+                            <button type="button" class="btn btn-secondary">Limpar Formulário</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <h4 class="mb-3">Retalhos em Estoque</h4>
+            <div class="card bg-dark text-white">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover" id="retalhoTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Descrição</th>
+                                    <th>Bitola</th>
+                                    <th>Largura</th>
+                                    <th>Comp.</th>
+                                    <th>Kg</th>
+                                    <th>Un</th>
+                                    <th>Código</th>
+                                    <th>Estaleiro</th>
+                                    <th>Reserva</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dados dos retalhos serão carregados aqui via JavaScript/AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between mt-3">
+                        <div>
+                            <button type="button" class="btn btn-info">Ler QR Code</button>
+                        </div>
+                        <div>
+                            <!-- Os botões de editar e deletar foram removidos daqui, 
+                                 pois a lógica agora os adiciona em cada linha da tabela -->
+                            <button type="button" class="btn btn-secondary" id="reloadRetalhoListBtn">Recarregar
+                                Lista</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulário de Ferramentas Máquinas (Placeholder) -->
+        <div id="ferramentas-form-section" class="material-form-section" style="display: none;">
+            <h4 class="mb-3">Nova Ferramenta/Item</h4>
+            <div class="card bg-dark text-white mb-4">
+                <div class="card-body">
+                    <form id="ferramentasForm">
+                        <input type="hidden" id="editingFerramentaId" value="">
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label for="ferramentaMaquina">Máquina:</label>
+                                <select class="form-control bg-dark text-white border-secondary" id="ferramentaMaquina"
+                                    name="maquina" required>
+                                    <option value="">Selecione a máquina</option>
+                                    <option value="LASER 01">LASER 01</option>
+                                    <option value="LASER 02">LASER 02</option>
+                                    <option value="PUNCIONADEIRA">PUNCIONADEIRA</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-5">
+                                <label for="ferramentaDescricao">Descrição:</label>
+                                <input type="text" class="form-control bg-dark text-white border-secondary"
+                                    id="ferramentaDescricao" name="descricao_material" required>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="ferramentaQuantUn">Qtd (un):</label>
+                                <input type="number" step="1" class="form-control bg-dark text-white border-secondary"
+                                    id="ferramentaQuantUn" name="quant_un">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-primary mr-2" id="saveFerramentaBtn">Salvar
+                                Item</button>
+                            <button type="button" class="btn btn-secondary" id="clearFerramentaFormBtn">Limpar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <h4 class="mb-3">Itens Cadastrados</h4>
+            <div class="card bg-dark text-white">
+                <div class="card-body">
+                    <div class="form-row mb-3">
+                        <div class="col-md-4">
+                            <label for="filterFerramentaMaquina">Filtrar por Máquina:</label>
+                            <select class="form-control bg-dark text-white border-secondary"
+                                id="filterFerramentaMaquina">
+                                <option value="Todas as Máquinas">Todas as Máquinas</option>
+                                <option value="LASER 01">LASER 01</option>
+                                <option value="LASER 02">LASER 02</option>
+                                <option value="PUNCIONADEIRA">PUNCIONADEIRA</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label for="filterFerramentaDesc">Filtrar por Descrição/Código:</label>
+                            <input type="text" class="form-control bg-dark text-white border-secondary"
+                                id="filterFerramentaDesc" placeholder="Digite para filtrar...">
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover" id="ferramentasTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Descrição</th>
+                                    <th>Qtd (un)</th>
+                                    <th>Máquina</th>
+                                    <th>Código</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dados das ferramentas serão carregados aqui via JavaScript/AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between mt-3">
+                        <div>
+                            <button type="button" class="btn btn-info">Ler QR Code</button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-secondary" id="reloadFerramentasListBtn">Recarregar
+                                Lista</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulário de Serra (Placeholder) -->
+        <div id="serra-form-section" class="material-form-section" style="display: none;">
+            <h4 class="mb-3">Novo Item de Serra</h4>
+            <div class="card bg-dark text-white mb-4">
+                <div class="card-body">
+                    <form id="serraForm">
+                        <input type="hidden" id="editingSerraId" value="">
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label for="serraTipo">Tipo:</label>
+                                <select class="form-control bg-dark text-white border-secondary" id="serraTipo"
+                                    name="tipo_serra" required>
+                                    <option value="">Selecione o tipo</option>
+                                    <option value="TUBO QUADRADO">TUBO QUADRADO</option>
+                                    <option value="TUBO RETANGULAR">TUBO RETANGULAR</option>
+                                    <option value="TUBO REDONDO GALV">TUBO REDONDO GALV</option>
+                                    <option value="TUBO REDONDO PRETO">TUBO REDONDO PRETO</option>
+                                    <option value="BARRA RED TREF 1045">BARRA RED TREF 1045</option>
+                                    <option value="BARRA RED TREF 1020">BARRA RED TREF 1020</option>
+                                    <option value="BARRA RED MECANICO 1045">BARRA RED MECANICO 1045</option>
+                                    <option value="BARRA RED MECANICO 1020">BARRA RED MECANICO 1020</option>
+                                    <option value="BARRA QD MECANICO 1045">BARRA QD MECANICO 1045</option>
+                                    <option value="BARRA QD MECANICO 1020">BARRA QD MECANICO 1020</option>
+                                    <option value="BARRA CHATA">BARRA CHATA</option>
+                                    <option value="BARRA CHATA ACO 5160">BARRA CHATA ACO 5160</option>
+                                    <option value="CANTONEIRA">CANTONEIRA</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-5">
+                                <label for="serraDescricao">Descrição:</label>
+                                <input type="text" class="form-control bg-dark text-white border-secondary"
+                                    id="serraDescricao" name="descricao_material" required>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="serraQuantUn">Qtd (un):</label>
+                                <input type="number" step="1" class="form-control bg-dark text-white border-secondary"
+                                    id="serraQuantUn" name="quant_un">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-primary mr-2">Salvar Item</button>
+                            <button type="button" class="btn btn-secondary">Limpar Formulário</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <h4 class="mb-3">Itens Cadastrados (Serra)</h4>
+            <div class="card bg-dark text-white">
+                <div class="card-body">
+                    <div class="form-row mb-3">
+                        <div class="col-md-4">
+                            <label for="filterSerraTipo">Filtrar por Tipo:</label>
+                            <select class="form-control bg-dark text-white border-secondary" id="filterSerraTipo">
+                                <option value="-- Todos --">-- Todos --</option>
+                                <option value="TUBO QUADRADO">TUBO QUADRADO</option>
+                                <option value="TUBO RETANGULAR">TUBO RETANGULAR</option>
+                                <option value="TUBO REDONDO GALV">TUBO REDONDO GALV</option>
+                                <option value="TUBO REDONDO PRETO">TUBO REDONDO PRETO</option>
+                                <option value="BARRA RED TREF 1045">BARRA RED TREF 1045</option>
+                                <option value="BARRA RED TREF 1020">BARRA RED TREF 1020</option>
+                                <option value="BARRA RED MECANICO 1045">BARRA RED MECANICO 1045</option>
+                                <option value="BARRA RED MECANICO 1020">BARRA RED MECANICO 1020</option>
+                                <option value="BARRA QD MECANICO 1045">BARRA QD MECANICO 1045</option>
+                                <option value="BARRA QD MECANICO 1020">BARRA QD MECANICO 1020</option>
+                                <option value="BARRA CHATA">BARRA CHATA</option>
+                                <option value="BARRA CHATA ACO 5160">BARRA CHATA ACO 5160</option>
+                                <option value="CANTONEIRA">CANTONEIRA</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label for="filterSerraDesc">Filtrar por Descrição/Código:</label>
+                            <input type="text" class="form-control bg-dark text-white border-secondary"
+                                id="filterSerraDesc" placeholder="Digite para filtrar...">
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover" id="serraTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Descrição</th>
+                                    <th>Qtd (un)</th>
+                                    <th>Tipo</th>
+                                    <th>Código</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dados da serra serão carregados aqui via JavaScript/AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between mt-3">
+                        <div>
+                            <button type="button" class="btn btn-info">Ler QR Code</button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-warning mr-2" id="editSelectedSerraBtn">Editar
+                                Selecionado</button>
+                            <button type="button" class="btn btn-danger mr-2" id="deleteSelectedSerraBtn">Deletar
+                                Selecionado</button>
+                            <button type="button" class="btn btn-secondary" id="reloadSerraListBtn">Recarregar
+                                Lista</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }} {# Mantém os scripts do layout.html #}
+
+<script>
+    $(document).ready(function () {
+        // Dados das chapas, passados do Flask para o JavaScript de forma segura
+        const chapaData = {{ chapa_data_json | tojson | safe }};
+
+        const materialTypeSelect = $('#materialTypeSelect');
+        const pageTitle = $('#page-title');
+        const formSections = $('.material-form-section');
+
+        // Preenche o combobox de chapas
+        function populateChapaSelect() {
+            const chapaSelect = $('#chapaSelect');
+            chapaSelect.empty().append('<option value="">Selecione um tipo</option>');
+            if (!chapaData || typeof chapaData !== 'object') return;
+            // Itera sobre cada grupo (ex: "Chapa Galvanizada")
+            for (const group in chapaData) {
+                if (!Object.prototype.hasOwnProperty.call(chapaData, group)) continue;
+                const optgroup = $(`<optgroup label="${group}"></optgroup>`);
+                // Itera sobre cada item dentro do grupo
+                const items = chapaData[group] || {};
+                for (const chapaName in items) {
+                    if (!Object.prototype.hasOwnProperty.call(items, chapaName)) continue;
+                    optgroup.append(`<option value="${chapaName}">${chapaName}</option>`);
+                }
+                chapaSelect.append(optgroup);
+            }
+        }
+
+        // Preenche o combobox de chapa base para retalho
+        function populateRetalhoChapaBaseSelect() {
+            const retalhoChapaBaseSelect = $('#retalhoChapaBase');
+            retalhoChapaBaseSelect.empty().append('<option value="">Selecione a chapa base</option>');
+            if (!chapaData || typeof chapaData !== 'object') return;
+            for (const group in chapaData) {
+                if (!Object.prototype.hasOwnProperty.call(chapaData, group)) continue;
+                for (const chapaName in chapaData[group]) {
+                    if (!Object.prototype.hasOwnProperty.call(chapaData[group], chapaName)) continue;
+                    retalhoChapaBaseSelect.append(`<option value="${chapaName}">${chapaName}</option>`);
+                }
+            }
+        }
+
+        // Função para exibir o formulário correto
+        function showFormSection(type) {
+            formSections.hide();
+            $(`#${type}-form-section`).show();
+            const pretty = type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ');
+            pageTitle.text(`Cadastro - ${pretty}`);
+        }
+
+        // Evento de mudança no seletor de tipo de material
+        materialTypeSelect.on('change', function () {
+            const selectedType = $(this).val();
+            showFormSection(selectedType);
+            // Load list corresponding to form
+            if (selectedType === 'chapa') {
+                loadChapasList();
+            } else if (selectedType === 'retalho') {
+                loadRetalhosList();
+            } else if (selectedType === 'ferramentas') {
+                loadFerramentasList();
+            } else if (selectedType === 'serra') {
+                loadSerraList();
+            }
+        });
+
+        // Lógica para o formulário de Chapa
+        const chapaSelect = $('#chapaSelect');
+        const bitolaInput = $('#bitola');
+        const larguraInput = $('#largura');
+        const comprimentoInput = $('#comprimento');
+        const quantUnInput = $('#quant_un');
+        const quantKgInput = $('#quant_kg');
+        const chapaForm = $('#chapaForm');
+        const saveChapaBtn = $('#saveChapaBtn');
+        const clearChapaFormBtn = $('#clearChapaFormBtn');
+
+        function getChapaInfo(selectedDesc) {
+            if (!selectedDesc || !chapaData) return null;
+            for (const group in chapaData) {
+                if (!Object.prototype.hasOwnProperty.call(chapaData, group)) continue;
+                const groupItems = chapaData[group] || {};
+                if (groupItems[selectedDesc]) {
+                    return groupItems[selectedDesc];
+                }
+            }
+            return null;
+        }
+
+        function updateWeightCalculation() {
+            const selectedDesc = chapaSelect.val();
+            const chapaInfo = getChapaInfo(selectedDesc);
+
+            if (!chapaInfo) {
+                quantKgInput.val('');
+                return;
+            }
+
+            try {
+                const largura_mm = parseFloat(larguraInput.val()) || 0;
+                const comprimento_mm = parseFloat(comprimentoInput.val()) || 0;
+                const unidades = parseInt(quantUnInput.val()) || 0;
+                const kg_m2 = parseFloat(chapaInfo.kg_m2) || 0;
+
+                const peso_total_kg = (largura_mm * comprimento_mm * kg_m2 / 1000000) * unidades;
+                quantKgInput.val(peso_total_kg ? peso_total_kg.toFixed(2) : '');
+            } catch (e) {
+                quantKgInput.val('');
+            }
+        }
+
+        chapaSelect.on('change', function () {
+            const selectedDesc = $(this).val();
+            const chapaInfo = getChapaInfo(selectedDesc);
+            if (chapaInfo) {
+                bitolaInput.val(chapaInfo.bitola || '');
+            } else {
+                bitolaInput.val('');
+            }
+            updateWeightCalculation();
+        });
+
+        larguraInput.on('input', updateWeightCalculation);
+        comprimentoInput.on('input', updateWeightCalculation);
+        quantUnInput.on('input', updateWeightCalculation);
+
+        clearChapaFormBtn.on('click', function () {
+            chapaForm[0].reset();
+            $('#editingChapaId').val('');
+            bitolaInput.val(''); // Limpa bitola explicitamente
+            quantKgInput.val(''); // Limpa kg explicitamente
+            saveChapaBtn.text('Salvar Nova Chapa');
+            chapaSelect.prop('disabled', false); // Reabilita seleção de chapa
+        });
+
+        chapaForm.on('submit', function (e) {
+            e.preventDefault();
+            const formData = {
+                idmateriais: $('#editingChapaId').val(),
+                descricao_material: chapaSelect.val(),
+                bitola: bitolaInput.val(),
+                largura: larguraInput.val(),
+                comprimento: comprimentoInput.val(),
+                quant_un: quantUnInput.val(),
+                quant_kg: quantKgInput.val()
+            };
+
+            // Aqui você faria uma requisição AJAX para o seu backend Flask
+            console.log("Dados a serem salvos/atualizados:", formData);
+            alert("Funcionalidade de salvar/atualizar ainda não implementada via AJAX.");
+        });
+
+        // Lógica para carregar a lista de chapas (exemplo com dados mock)
+        function loadChapasList() {
+            const chapaTableBody = $('#chapaTable tbody');
+            chapaTableBody.html('<tr><td colspan="8" class="text-center">Carregando...</td></tr>');
+
+            $.ajax({
+                url: '/api/chapas', // Rota do Flask que busca as chapas no banco
+                type: 'GET',
+                success: function (chapas) {
+                    chapaTableBody.empty();
+                    if (!chapas || chapas.length === 0) {
+                        chapaTableBody.html('<tr><td colspan="8" class="text-center">Nenhuma chapa encontrada.</td></tr>');
+                        return;
+                    }
+                    chapas.forEach(chapa => {
+                        const row = `<tr data-id="${chapa.idmateriais}">
+                                <td>${chapa.idmateriais}</td>
+                                <td>${chapa.descricao_material || ''}</td>
+                                <td>${chapa.bitola || ''}</td>
+                                <td>${chapa.largura || ''}</td>
+                                <td>${chapa.comprimento || ''}</td>
+                                <td>${chapa.quant_kg || ''}</td>
+                                <td>${chapa.quant_un || ''}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-warning edit-chapa-btn" data-id="${chapa.idmateriais}">Editar</button>
+                                    <button class="btn btn-sm btn-danger delete-chapa-btn" data-id="${chapa.idmateriais}">Deletar</button>
+                                </td>
+                            </tr>`;
+                        chapaTableBody.append(row);
+                    });
+                    // Reanexar eventos aos novos botões
+                    attachChapaActionEvents();
+                },
+                error: function (error) {
+                    chapaTableBody.empty();
+                    const errorMessage = (error && error.responseJSON && error.responseJSON.error) || error.statusText || "Erro desconhecido";
+                    chapaTableBody.html(`<tr><td colspan="8" class="text-center text-danger">Erro ao carregar chapas: ${errorMessage}</td></tr>`);
+                }
+            });
+        }
+
+        // Função para aninhar eventos de ação da tabela de chapas
+        function attachChapaActionEvents() {
+            $('.edit-chapa-btn').on('click', function () {
+                const chapaId = $(this).data('id');
+                alert(`Editar chapa ID: ${chapaId}`);
+                // Carregue via AJAX e preencha formulário se desejar
+            });
+
+            $('.delete-chapa-btn').on('click', function () {
+                const chapaId = $(this).data('id');
+                if (confirm(`Tem certeza que deseja deletar a chapa ID ${chapaId}?`)) {
+                    alert(`Deletar chapa ID: ${chapaId}`);
+                    // Implementar AJAX de deleção aqui
+                }
+            });
+        }
+
+        // --- Lógica para o formulário de Retalho ---
+
+        function loadRetalhosList() {
+            const retalhoTableBody = $('#retalhoTable tbody');
+            retalhoTableBody.html('<tr><td colspan="11" class="text-center">Carregando...</td></tr>');
+
+            $.ajax({
+                url: '/api/retalho',
+                type: 'GET',
+                success: function (retalhos) {
+                    retalhoTableBody.empty();
+                    if (!retalhos || retalhos.length === 0) {
+                        retalhoTableBody.html('<tr><td colspan="11" class="text-center">Nenhum retalho encontrado.</td></tr>');
+                        return;
+                    }
+                    retalhos.forEach(retalho => {
+                        const reservaText = retalho.reserva ? 'Sim' : 'Não';
+                        const row = `<tr data-id="${retalho.idmateriais}">
+                                <td>${retalho.idmateriais}</td>
+                                <td>${retalho.descricao_material || ''}</td>
+                                <td>${retalho.bitola || ''}</td>
+                                <td>${retalho.largura || ''}</td>
+                                <td>${retalho.comprimento || ''}</td>
+                                <td>${retalho.quant_kg || ''}</td>
+                                <td>${retalho.quant_un || ''}</td>
+                                <td>${retalho.codigo_material || ''}</td>
+                                <td>${retalho.estaleiro || ''}</td>
+                                <td>${reservaText}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger delete-retalho-btn" data-id="${retalho.idmateriais}">Deletar</button>
+                                </td>
+                            </tr>`;
+                        retalhoTableBody.append(row);
+                    });
+                    attachRetalhoActionEvents();
+                },
+                error: function (error) {
+                    retalhoTableBody.empty();
+                    const errorMessage = (error && error.responseJSON && error.responseJSON.error) || error.statusText || "Erro desconhecido";
+                    retalhoTableBody.html(`<tr><td colspan="11" class="text-center text-danger">Erro ao carregar retalhos: ${errorMessage}</td></tr>`);
+                }
+            });
+        }
+
+        function attachRetalhoActionEvents() {
+            // Evento para o botão de deletar
+            $('.delete-retalho-btn').on('click', function () {
+                const retalhoId = $(this).data('id');
+                if (confirm(`Tem certeza que deseja deletar o retalho ID ${retalhoId}?`)) {
+                    $.ajax({
+                        url: `/api/retalho/${retalhoId}`,
+                        type: 'DELETE',
+                        success: function (response) {
+                            showToast(response.message || "Retalho deletado com sucesso!");
+                            loadRetalhosList(); // Recarrega a lista
+                        },
+                        error: function (error) {
+                            const errorMessage = (error && error.responseJSON && error.responseJSON.error) || error.statusText || "Erro desconhecido";
+                            showToast('Erro ao deletar retalho: ' + errorMessage, 'error');
+                        }
+                    });
+                }
+            });
+        }
+
+        // --- Lógica para o formulário de Ferramentas ---
+        let allFerramentas = []; // Cache para os dados das ferramentas
+
+        function loadFerramentasList() {
+            const ferramentasTableBody = $('#ferramentasTable tbody');
+            ferramentasTableBody.html('<tr><td colspan="6" class="text-center">Carregando...</td></tr>');
+
+            $.ajax({
+                url: '/api/materiais/unitario',
+                type: 'GET',
+                success: function (ferramentas) {
+                    allFerramentas = ferramentas || []; // Armazena no cache
+                    filterFerramentasList(); // Renderiza a lista com base nos filtros
+                },
+                error: function (error) {
+                    allFerramentas = [];
+                    ferramentasTableBody.empty();
+                    const errorMessage = (error && error.responseJSON && error.responseJSON.error) || error.statusText || "Erro desconhecido";
+                    ferramentasTableBody.html(`<tr><td colspan="6" class="text-center text-danger">Erro ao carregar itens: ${errorMessage}</td></tr>`);
+                }
+            });
+        }
+
+        function filterFerramentasList() {
+            const ferramentasTableBody = $('#ferramentasTable tbody');
+            ferramentasTableBody.empty();
+
+            const filterMaquina = $('#filterFerramentaMaquina').val();
+            const filterDesc = ($('#filterFerramentaDesc').val() || '').toLowerCase();
+
+            const filteredData = allFerramentas.filter(item => {
+                const maquinaVal = item.estaleiro || '';
+                const maquinaMatch = (filterMaquina === 'Todas as Máquinas') || (maquinaVal === filterMaquina);
+                const descVal = (item.descricao_material || '').toLowerCase();
+                const codigoVal = (item.codigo_material || '').toLowerCase();
+                const descMatch = descVal.includes(filterDesc) || codigoVal.includes(filterDesc);
+                return maquinaMatch && descMatch;
+            });
+
+            if (!filteredData || filteredData.length === 0) {
+                ferramentasTableBody.html('<tr><td colspan="6" class="text-center">Nenhum item encontrado.</td></tr>');
+                return;
+            }
+
+            filteredData.forEach(item => {
+                const row = `<tr data-id="${item.idmateriais}">
+                        <td>${item.idmateriais}</td>
+                        <td>${item.descricao_material || ''}</td>
+                        <td>${item.quant_un || ''}</td>
+                        <td>${item.estaleiro || ''}</td>
+                        <td>${item.codigo_material || ''}</td>
+                        <td>
+                            <button class="btn btn-sm btn-warning edit-ferramenta-btn">Editar</button>
+                            <button class="btn btn-sm btn-danger delete-ferramenta-btn">Deletar</button>
+                        </td>
+                    </tr>`;
+                ferramentasTableBody.append(row);
+            });
+        }
+
+        // Eventos de filtro
+        $('#filterFerramentaMaquina, #filterFerramentaDesc').on('change keyup input', filterFerramentasList);
+
+        // Eventos de ação (Salvar, Editar, Deletar)
+        $('#ferramentasForm').on('submit', function (e) {
+            e.preventDefault();
+            const id = $('#editingFerramentaId').val();
+            const data = {
+                descricao_material: $('#ferramentaDescricao').val(),
+                estaleiro: $('#ferramentaMaquina').val(), // 'estaleiro' é o nome do campo no DB
+                quant_un: $('#ferramentaQuantUn').val()
+            };
+
+            const url = id ? `/api/materiais/unitario/${id}` : '/api/materiais/unitario';
+            const method = id ? 'PUT' : 'POST';
+
+            $.ajax({
+                url: url,
+                type: method,
+                contentType: 'application/json',
+                data: JSON.stringify(data),
+                success: function (response) {
+                    showToast(response.message);
+                    $('#ferramentasForm')[0].reset();
+                    $('#editingFerramentaId').val('');
+                    $('#saveFerramentaBtn').text('Salvar Item');
+                    loadFerramentasList();
+                },
+                error: function (error) {
+                    const msg = (error && error.responseJSON && error.responseJSON.error) || error.statusText || 'Erro desconhecido';
+                    showToast(msg, 'error');
+                }
+            });
+        });
+
+        $('#clearFerramentaFormBtn').on('click', function () {
+            $('#ferramentasForm')[0].reset();
+            $('#editingFerramentaId').val('');
+            $('#saveFerramentaBtn').text('Salvar Item');
+        });
+
+        // Delegação de eventos para botões na tabela
+        $('#ferramentasTable').on('click', '.edit-ferramenta-btn', function () {
+            const row = $(this).closest('tr');
+            const id = row.data('id');
+            $('#editingFerramentaId').val(id);
+            $('#ferramentaDescricao').val(row.find('td:eq(1)').text());
+            $('#ferramentaQuantUn').val(row.find('td:eq(2)').text());
+            $('#ferramentaMaquina').val(row.find('td:eq(3)').text());
+            $('#saveFerramentaBtn').text('Atualizar Item');
+            $('html, body').animate({ scrollTop: 0 }, 'slow'); // Rola para o topo
+        });
+
+        $('#ferramentasTable').on('click', '.delete-ferramenta-btn', function () {
+            const id = $(this).closest('tr').data('id');
+            if (confirm(`Tem certeza que deseja deletar o item ID ${id}?`)) {
+                $.ajax({
+                    url: `/api/materiais/unitario/${id}`,
+                    type: 'DELETE',
+                    success: function (response) {
+                        showToast(response.message);
+                        loadFerramentasList();
+                    },
+                    error: function (error) {
+                        const msg = (error && error.responseJSON && error.responseJSON.error) || error.statusText || 'Erro desconhecido';
+                        showToast(msg, 'error');
+                    }
+                });
+            }
+        });
+
+        // Função utilitária para mostrar 'toasts' (notificações)
+        function showToast(message, type = 'success') {
+            const toast = $('<div class="toast"></div>').text(message).addClass(type === 'error' ? 'error' : '');
+            $('body').append(toast);
+            toast.fadeIn(400).delay(3000).fadeOut(400, function () {
+                $(this).remove();
+            });
+        }
+
+        // Adiciona um pouco de estilo para o toast
+        $('<style>.toast { position: fixed; top: 20px; right: 20px; padding: 15px 20px; background-color: #28a745; color: white; border-radius: 5px; z-index: 1050; display: none; } .toast.error { background-color: #dc3545; }</style>').appendTo('head');
+
+        $('#reloadChapaListBtn').on('click', loadChapasList);
+        $('#reloadRetalhoListBtn').on('click', loadRetalhosList);
+        $('#reloadFerramentasListBtn').on('click', loadFerramentasList);
+        $('#reloadSerraListBtn').on('click', loadSerraList);
+
+        // Inicialização
+        populateChapaSelect();
+        populateRetalhoChapaBaseSelect(); // Para o formulário de retalho
+        showFormSection(materialTypeSelect.val());
+        loadChapasList(); // Carrega a lista inicial de chapas
+
+    });
+</script>
+{% endblock %}

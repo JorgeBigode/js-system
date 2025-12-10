@@ -1,0 +1,16 @@
+{
+    "6406": {
+        "info": {
+            "pedido": "172",
+            "cliente": "CAMPOS VERDES",
+            "conjunto": "TRANSICAO 220 X 258 - \u00d8 240",
+            "lote": null,
+            "quantidade": "2",
+            "equipamento_pai": "LOTE DE CANALIZA\u00c7\u00c3O"
+        },
+        "files": [
+            "item_6406_20251021103136511372.png",
+            "item_6406_20251021100956993016.png"
+        ]
+    }
+}

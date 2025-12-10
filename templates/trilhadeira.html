@@ -1,0 +1,597 @@
+{% extends "layout.html" %}
+{# Peço desculpas, o arquivo anterior continha um erro de digitação. Corrigindo para 'layout.html' #}
+{% block title %}Controle da Trilhadeira{% endblock %}
+
+{% block content %}
+<style>
+    /* Estilos específicos para os cards da trilhadeira */
+    .tr-card {
+        border: 1px solid #444;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        color: black; /* Cor padrão do texto dentro do card */
+        transition: all 0.3s ease;
+        display: flex; /* Para alinhar imagem e conteúdo */
+        flex-direction: row;
+    }
+    .tr-card-img {
+        padding: 1rem;
+        flex-shrink: 0; /* Impede que a imagem encolha */
+    }
+    .tr-card-img img {
+        width: 140px;
+        height: 140px;
+        object-fit: contain; /* Garante que a imagem mantenha a proporção */
+    }
+    .tr-card-header {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid rgba(0,0,0,.125);
+    }
+    .tr-card-body {
+        padding: 1.25rem;
+        flex-grow: 1;
+    }
+    .tr-card-body p {
+        margin-bottom: 0.2rem;
+    }
+    .tr-card-details {
+        display: none; /* Começa escondido */
+        padding-top: 1rem;
+    }
+    .tr-card-details p {
+        margin-bottom: 0.3rem;
+        font-size: 0.9rem;
+    }
+    .toggle-details-btn {
+        float: right;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+    /* Cores baseadas no status (adaptado do seu código Tkinter) */
+    /* Cores de fundo para CARDS e BOTÕES */
+    .status-em-programacao { background-color: #e06666; }
+    .status-a-iniciar-producao { background-color: #e69138; }
+    .status-produzindo { background-color: #f1c232; }
+    .status-esperando-qualidade { background-color: #ffff00; }
+    .status-patio { background-color: #056b27; }
+    .status-entregue { background-color: #48dfa0; }
+    .status-cancelada { background-color: #A64D79; }
+    .status-default { background-color: #cccccc; }
+
+    /* Cores de texto para CARDS (para garantir legibilidade) */
+    .tr-card.status-em-programacao, .tr-card.status-a-iniciar-producao, .tr-card.status-patio, .tr-card.status-cancelada { color: white; }
+    .tr-card.status-produzindo, .tr-card.status-esperando-qualidade, .tr-card.status-entregue, .tr-card.status-default { color: black; }
+
+    /* Estilos específicos para BOTÕES (borda e cor do texto - conforme sua especificação) */
+    .btn.status-em-programacao, .btn.status-a-iniciar-producao, .btn.status-produzindo,
+    .btn.status-esperando-qualidade, .btn.status-patio, .btn.status-entregue,
+    .btn.status-cancelada, .btn.status-default {
+        color: black; /* Conforme sua especificação, texto preto para todos os botões */
+        border: 1px solid; /* Borda sólida */
+    }
+    .btn.status-em-programacao { border-color: #e06666; }
+    .btn.status-a-iniciar-producao { border-color: #e69138; }
+    .btn.status-produzindo { border-color: #f1c232; }
+    .btn.status-esperando-qualidade { border-color: #ffff00; }
+    .btn.status-patio { border-color: #056b27; }
+    .btn.status-entregue { border-color: #48dfa0; }
+    .btn.status-cancelada { border-color: #A64D79; }
+    .btn.status-default { border-color: #cccccc; }
+
+    /* Filtros */
+    #status-filters .btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+
+    /* Menu de Contexto Customizado */
+    #context-menu {
+        position: fixed;
+        z-index: 10000;
+        width: 200px;
+        background: #2c2c2c;
+        border-radius: 5px;
+        display: none;
+        border: 1px solid #555;
+    }
+    #context-menu .list-group-item {
+        background-color: transparent;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+    }
+    #context-menu .list-group-item:hover {
+        background-color: #007bff;
+    }
+</style>
+
+<!-- Menu de Contexto (Elemento Faltando) -->
+<div id="context-menu">
+    <ul class="list-group">
+        <li class="list-group-item" data-action="EM PROGRAMAÇÃO">EM PROGRAMAÇÃO</li>
+        <li class="list-group-item" data-action="A INICIAR PRODUÇÃO">A INICIAR PRODUÇÃO</li>
+        <li class="list-group-item" data-action="PRODUZINDO">PRODUZINDO</li>
+        <li class="list-group-item" data-action="ESPERANDO QUALIDADE">ESPERANDO QUALIDADE</li>
+        <li class="list-group-item" data-action="PATIO">PÁTIO</li>
+        <li class="list-group-item" data-action="ENTREGUE">ENTREGUE</li>
+        <li class="list-group-item" data-action="CANCELADA">CANCELAR</li>
+    </ul>
+</div>
+
+<div class="container-fluid pt-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 text-light mb-0">Controle da Trilhadeira</h1>
+        <button class="btn btn-primary" id="btn-add-tr">ADICIONAR TR</button>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO -->
+    <div class="modal fade" id="edit-tr-modal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Editar TR</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-tr-form">
+                        <input type="hidden" id="edit-tr-id">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Modelo</label>
+                                <select id="edit-modelo" class="form-control bg-dark text-white border-secondary"></select>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>N° de Série</label>
+                                <input type="text" id="edit-n_serie" class="form-control bg-dark text-white border-secondary">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Montagem</label>
+                                <select id="edit-montagem" class="form-control bg-dark text-white border-secondary"></select>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Frete</label>
+                                <select id="edit-frete" class="form-control bg-dark text-white border-secondary"></select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Frequência</label>
+                                <select id="edit-frequencia" class="form-control bg-dark text-white border-secondary"></select>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Bica</label>
+                                <select id="edit-bica" class="form-control bg-dark text-white border-secondary"></select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Observação</label>
+                            <textarea id="edit-observacao" class="form-control bg-dark text-white border-secondary" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" id="btn-save-tr" class="btn btn-primary">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE ADICIONAR -->
+    <div class="modal fade" id="add-tr-modal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Adicionar TR por Equipamento</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Selecione um ou mais equipamentos para buscar pedidos:</label>
+                        <select id="add-equip-select" class="form-control bg-dark text-white border-secondary" multiple style="height: 150px;"></select>
+                    </div>
+                    <button class="btn btn-info" id="btn-search-equip">Buscar Pedidos</button>
+                    <hr class="border-secondary">
+                    <div id="add-results-container" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros de Status -->
+    <div id="status-filters" class="mb-4">
+        <button class="btn btn-secondary btn-sm" data-status="all">TODOS</button>
+        <!-- Outros botões de status serão adicionados aqui via JS -->
+    </div>
+
+    <!-- Container para os Cards -->
+    <div id="trilhadeira-cards-container" class="row">
+        <!-- Spinner de Carregamento -->
+        <div id="loading-spinner" class="col-12 text-center mt-5">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="sr-only">Carregando...</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('trilhadeira-cards-container');
+    const filtersContainer = document.getElementById('status-filters');
+    const loadingSpinner = document.getElementById('loading-spinner');
+    let allData = [];
+
+    const statusMap = {
+        'AGUARDANDO': 'status-default',
+        'EM PROGRAMAÇÃO': 'status-em-programacao', 'AGUARDANDO PROGRAMACAO': 'status-em-programacao',
+        'A INICIAR PRODUÇÃO': 'status-a-iniciar-producao', 'AGUARDANDO PCP': 'status-a-iniciar-producao',
+        'EM PRODUCAO': 'status-produzindo',
+        'ESPERANDO QUALIDADE': 'status-esperando-qualidade', 'PRODUCAO FINALIZADA': 'status-esperando-qualidade',
+        'PATIO': 'status-patio', 'ENTREGUE': 'status-entregue', 'CANCELADA': 'status-cancelada',
+    };
+    
+    // Lista de todos os status possíveis para os botões de filtro, na ordem desejada
+    const allPossibleStatuses = [
+        'AGUARDANDO',
+        'EM PROGRAMAÇÃO',
+        'AGUARDANDO PROGRAMACAO',
+        'A INICIAR PRODUÇÃO',
+        'AGUARDANDO PCP',
+        'EM PRODUCAO',
+        'ESPERANDO QUALIDADE',
+        'PRODUCAO FINALIZADA',
+        'PATIO',
+        'ENTREGUE',
+        'CANCELADA'
+    ];
+
+    const modelosTr = ["TR-60", "TR-80", "TR-80 BD", "TR-100", "TR-120", "TR-120s", "TR-150s"];
+    const montagemOpts = ["SMA", "CLIENTE"];
+    const freteOpts = ["SMA", "CLIENTE"];
+    const freqOpts = ["50Hz", "60Hz"];
+    const bicaOpts = ["BICA SIMPLES", "BICA DUPLA"];
+
+    // --- Menu de Contexto ---
+    const contextMenu = document.getElementById('context-menu');
+
+    function getStatusClass(status) {
+        return statusMap[status] || 'status-default';
+    }
+
+    function renderCards(data) {
+        container.innerHTML = ''; // Limpa o container (e o spinner)
+        if (data.length === 0) {
+            container.innerHTML = '<p class="col-12 text-center text-muted">Nenhum item encontrado.</p>';
+            return;
+        }
+
+        data.forEach(item => {
+            const modeloFilename = (item.modelo || '').replace(' ', '_');
+            const imagePath = `/static/img/${modeloFilename}.png`; // Assumindo que as imagens estão em /static/img/ e são .png
+            const statusClass = getStatusClass(item.status);
+            const dataEntrega = item.data_entrega ? new Date(item.data_entrega).toLocaleDateString('pt-BR') : 'N/A';
+
+            const card = `
+                <div class="col-xl-3 col-lg-4 col-md-6 col-sm-12">
+                    <div class="tr-card ${statusClass}" data-id="${item.idpedidos_tr}" data-status="${item.status || 'N/A'}">
+                        <div class="tr-card-img">
+                            <img src="${imagePath}" alt="${item.modelo}" onerror="this.style.display='none'">
+                        </div>
+                        <div class="tr-card-body">
+                            <div class="tr-card-header p-0 border-0 mb-2">
+                                <strong>${item.cliente}</strong>
+                                <span class="toggle-details-btn" title="Mostrar/Ocultar Detalhes">▼</span>
+                            </div>
+                            <p><strong>Pedido:</strong> ${item.numero_pedido}</p>
+                            <p><strong>Modelo:</strong> ${item.modelo || 'N/A'}</p>
+                            <p><strong>Status:</strong> ${item.status || 'N/A'}</p>
+                            
+                            <div class="tr-card-details">
+                                <hr style="background-color: rgba(0,0,0,0.2);">
+                                <p><strong>Entrega:</strong> ${dataEntrega}</p>
+                                <p><strong>N° Série:</strong> ${item.n_serie || 'N/A'}</p>
+                                <p><strong>Montagem:</strong> ${item.montagem || 'N/A'}</p>
+                                <p><strong>Frete:</strong> ${item.frete || 'N/A'}</p>
+                                <p><strong>Bica:</strong> ${item.bica || 'N/A'}</p>
+                                <p><strong>Observação:</strong> ${item.observacao || 'N/A'}</p>
+                                <button class="btn btn-sm btn-outline-dark mt-2 btn-edit-tr" data-id="${item.idpedidos_tr}">Editar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML += card;
+        });
+    }
+
+    function updateStatusFilters(data) {
+        const counts = data.reduce((acc, item) => {
+            const status = item.status || 'N/A';
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+        }, {});
+
+        // Limpa filtros antigos, exceto o botão "TODOS"
+        while (filtersContainer.children.length > 1) {
+            filtersContainer.removeChild(filtersContainer.lastChild);
+        }
+
+        // Itera sobre todos os status possíveis para criar os botões
+        allPossibleStatuses.forEach(status => {
+            const count = counts[status] || 0; // Pega a contagem, ou 0 se o status não estiver nos dados
+            const statusClass = getStatusClass(status); // Obtém a classe CSS completa (ex: 'status-em-programacao')
+            const btn = document.createElement('button');
+            btn.className = `btn btn-sm ${statusClass}`; // Aplica a classe CSS completa
+            btn.textContent = `${status} (${count})`;
+            btn.dataset.status = status;
+            filtersContainer.appendChild(btn);
+        });
+    }
+
+    // Carregar dados da API
+    async function loadData() {
+        loadingSpinner.style.display = 'block';
+        container.innerHTML = '';
+        fetch('/api/trilhadeira')
+        .then(response => response.json())
+        .then(data => {
+            allData = data;
+            loadingSpinner.style.display = 'none';
+            renderCards(allData);
+            updateStatusFilters(allData);
+        })
+        .catch(error => {
+            console.error('Erro ao buscar dados da trilhadeira:', error);
+            loadingSpinner.style.display = 'none';
+            container.innerHTML = '<p class="col-12 text-center text-danger">Falha ao carregar dados.</p>';
+        });
+    }
+
+    // Event listener para os botões de filtro
+    filtersContainer.addEventListener('click', function(e) {
+        if (e.target.tagName === 'BUTTON') {
+            const statusFilter = e.target.dataset.status;
+            const filteredData = (statusFilter === 'all') ? allData : allData.filter(item => item.status === statusFilter);
+            renderCards(filteredData);
+        }
+    });
+
+    // --- LÓGICA DE EDIÇÃO ---
+    function populateSelect(element, options, selectedValue) {
+        element.innerHTML = '';
+        options.forEach(opt => {
+            const optionEl = new Option(opt, opt);
+            element.add(optionEl);
+        });
+        if (selectedValue) element.value = selectedValue;
+    }
+
+    // Listener unificado para cliques no corpo do documento
+    document.body.addEventListener('click', function(e) {
+        const target = e.target;
+
+        // Esconde o menu de contexto se clicar em qualquer outro lugar
+        if (!contextMenu.contains(target)) {
+            contextMenu.style.display = 'none';
+        }
+
+        // Lógica para mostrar/ocultar detalhes do card
+        if (target.classList.contains('toggle-details-btn')) {
+            const detailsDiv = target.closest('.tr-card').querySelector('.tr-card-details');
+            if (detailsDiv.style.display === 'block') {
+                detailsDiv.style.display = 'none';
+                target.textContent = '▼';
+            } else {
+                detailsDiv.style.display = 'block';
+                target.textContent = '▲';
+            }
+        } else if (target.classList.contains('btn-edit-tr')) { // Lógica para abrir modal de edição
+            const trId = e.target.dataset.id;
+            const item = allData.find(d => d.idpedidos_tr == trId);
+            if (!item) return;
+
+            document.getElementById('edit-tr-id').value = item.idpedidos_tr;
+            populateSelect(document.getElementById('edit-modelo'), modelosTr, item.modelo);
+            document.getElementById('edit-n_serie').value = item.n_serie || '';
+            populateSelect(document.getElementById('edit-montagem'), montagemOpts, item.montagem);
+            populateSelect(document.getElementById('edit-frete'), freteOpts, item.frete);
+            populateSelect(document.getElementById('edit-frequencia'), freqOpts, item.frequencia);
+            populateSelect(document.getElementById('edit-bica'), bicaOpts, item.bica);
+            document.getElementById('edit-observacao').value = item.observacao || '';
+
+            $('#edit-tr-modal').modal('show');
+        }
+    });
+
+    document.getElementById('btn-save-tr').addEventListener('click', async () => {
+        const trId = document.getElementById('edit-tr-id').value;
+        const data = {
+            modelo: document.getElementById('edit-modelo').value,
+            n_serie: document.getElementById('edit-n_serie').value,
+            montagem: document.getElementById('edit-montagem').value,
+            frete: document.getElementById('edit-frete').value,
+            frequencia: document.getElementById('edit-frequencia').value,
+            bica: document.getElementById('edit-bica').value,
+            observacao: document.getElementById('edit-observacao').value,
+        };
+
+        try {
+            const response = await fetch(`/api/trilhadeira/${trId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Erro desconhecido');
+            
+            alert(result.message);
+            $('#edit-tr-modal').modal('hide');
+            loadData(); // Recarrega os dados
+        } catch (error) {
+            alert(`Erro ao salvar: ${error.message}`);
+        }
+    });
+
+    // --- LÓGICA DO MENU DE CONTEXTO ---
+    container.addEventListener('contextmenu', function(e) {
+        const card = e.target.closest('.tr-card');
+        if (card) {
+            e.preventDefault();
+            contextMenu.style.top = `${e.clientY}px`;
+            contextMenu.style.left = `${e.clientX}px`;
+            contextMenu.style.display = 'block';
+            contextMenu.dataset.trId = card.dataset.id;
+        }
+    });
+
+    contextMenu.addEventListener('click', async function(e) {
+        const action = e.target.dataset.action;
+        const trId = contextMenu.dataset.trId;
+        if (!action || !trId) return;
+
+        const newStatus = action.toUpperCase();
+        if (!confirm(`Deseja alterar o status para '${newStatus}'?`)) return;
+
+        try {
+            const response = await fetch(`/api/trilhadeira/${trId}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Erro desconhecido');
+            
+            alert(result.message);
+            loadData();
+        } catch (error) {
+            alert(`Erro ao atualizar status: ${error.message}`);
+        } finally {
+            contextMenu.style.display = 'none';
+        }
+    });
+
+    // --- LÓGICA DE ADICIONAR TR ---
+    document.getElementById('btn-add-tr').addEventListener('click', async () => {
+        const equipSelect = document.getElementById('add-equip-select');
+        equipSelect.innerHTML = '<option>Carregando...</option>';
+        $('#add-tr-modal').modal('show');
+
+        try {
+            const response = await fetch('/api/equipamentos-tr');
+            const equipamentos = await response.json();
+            equipSelect.innerHTML = '';
+            equipamentos.forEach(eq => {
+                equipSelect.add(new Option(`(${eq.id}) ${eq.descricao}`, eq.id));
+            });
+        } catch (error) {
+            equipSelect.innerHTML = '<option>Falha ao carregar equipamentos</option>';
+        }
+    });
+
+    document.getElementById('btn-search-equip').addEventListener('click', async () => {
+        const selectedOptions = [...document.getElementById('add-equip-select').selectedOptions];
+        const equipIds = selectedOptions.map(opt => opt.value);
+        const resultsContainer = document.getElementById('add-results-container');
+        resultsContainer.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Buscando...';
+
+        if (equipIds.length === 0) {
+            resultsContainer.innerHTML = '<p class="text-warning">Selecione ao menos um equipamento.</p>';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/pedidos-por-equipamento', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ equip_ids: equipIds })
+            });
+            const results = await response.json();
+
+            resultsContainer.innerHTML = '';
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-muted">Nenhum pedido encontrado para os equipamentos selecionados.</p>';
+                return;
+            }
+
+            results.forEach(pedido => {
+                let equipamentosHtml = '';
+                pedido.equipamentos.forEach(equip => {
+                    // Lista de conjuntos
+                    const conjuntosHtml = equip.conjuntos.map(conjunto => 
+                        `<li class="list-group-item bg-transparent border-secondary py-1 px-2">${conjunto}</li>`
+                    ).join('');
+
+                    // Bloco do equipamento
+                    equipamentosHtml += `
+                        <div class="equipamento-bloco mt-3 p-3 border border-secondary rounded">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong class="text-primary">${equip.equipamento_pai}</strong>
+                                <div>
+                                    <select class="form-control form-control-sm bg-dark text-white d-inline-block w-auto mr-2">${modelosTr.map(m => `<option>${m}</option>`).join('')}</select>
+                                    <button class="btn btn-sm btn-success btn-register-tr" data-idpedido="${pedido.idpedido}" data-equipid="${equip.equipamento_id}">Registrar</button>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <small class="text-muted">Conjuntos:</small>
+                                <ul class="list-group list-group-flush mt-1">
+                                    ${conjuntosHtml}
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                resultsContainer.innerHTML += `
+                    <div class="card bg-secondary mb-3">
+                        <div class="card-header"><strong>${pedido.cliente}</strong> (Pedido: ${pedido.numero_pedido})</div>
+                        <div class="card-body">${equipamentosHtml}</div>
+                    </div>`;
+            });
+        } catch (error) {
+            resultsContainer.innerHTML = '<p class="text-danger">Erro ao buscar.</p>';
+        }
+    });
+
+    const resultsContainer = document.getElementById('add-results-container');
+    resultsContainer.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('btn-register-tr')) {
+            const button = e.target;
+            const modelo = button.previousElementSibling.value;
+            const data = {
+                idpedido: button.dataset.idpedido,
+                equipamento_id: button.dataset.equipid,
+                modelo: modelo
+            };
+
+            if (!confirm(`Registrar o modelo '${modelo}' para este equipamento?`)) return;
+
+            try {
+                const response = await fetch('/api/trilhadeira', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Erro desconhecido');
+                
+                alert(result.message);
+                $('#add-tr-modal').modal('hide');
+                loadData();
+            } catch (error) {
+                alert(`Erro ao registrar: ${error.message}`);
+            }
+        }
+    });
+
+    // Carregar dados iniciais
+    loadData();
+});
+</script>
+{% endblock %}

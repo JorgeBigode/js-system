@@ -1,0 +1,15 @@
+{
+    "largura_mm": 100,
+    "altura_mm": 80,
+    "margem_sup_mm": 3,
+    "margem_esq_mm": 5,
+    "fonte_header": 15,
+    "fonte_cliente": 20,
+    "fonte_equipamento": 12,
+    "fonte_conjunto": 20,
+    "fonte_quantidade": 15,
+    "rotacionar": false,
+    "metodo_impressao": "bartender",
+    "bartender_exe_path": "C:\\Program Files\\Seagull\\BarTender 2022\\bartend.exe",
+    "bartender_btw_path": "C:\\Etiquetas\\modelo_obra.btw"
+}

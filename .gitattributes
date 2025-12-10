@@ -1,0 +1,5 @@
+# Tratar todos os arquivos de texto com finais de linha LF para consistência entre plataformas.
+* text=auto eol=lf
+
+# Tratar o certificado como um arquivo binário para evitar qualquer conversão.
+*.pem binary

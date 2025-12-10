@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sistema Principal{% endblock %}</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { background-color: #1f1f1f; color: white; }
+
+        #sidebar {
+            width: 250px; /* Largura inicial */
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            background-color: #171717;
+            transition: all 0.3s;
+            z-index: 2000;
+            overflow-x: hidden; /* Esconde conteúdo que transborda */
+        }
+
+        /* Estado colapsado: a sidebar fica mais estreita */
+        #sidebar.collapsed {
+            width: 60px;
+        }
+
+        /* Esconde o conteúdo (links, etc.) quando colapsada, mas não o botão */
+        #sidebar.collapsed .sidebar-content {
+            display: none;
+        }
+
+        .sidebar .nav-link { color: white; border: 1px solid gray; margin-bottom: 5px; border-radius: 8px; }
+        .sidebar .nav-link:hover { background-color: #007bff; }
+
+        /* O conteúdo principal tem uma margem à esquerda para não ficar atrás da sidebar */
+        #content {
+            transition: margin-left 0.3s;
+            margin-left: 250px; /* Mesma largura inicial da sidebar */
+            padding: 20px;
+        }
+
+        /* Ajusta a margem do conteúdo quando a sidebar está colapsada */
+        #sidebar.collapsed ~ #content {
+            margin-left: 60px; /* Mesma largura da sidebar colapsada */
+        }
+
+        /* Botão de toggle */
+        #sidebarCollapseBtn {
+            background: none;
+            border: none;
+            color: #818181;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%; /* Ocupa toda a largura disponível */
+            text-align: center;
+            padding: 10px 0;
+        }
+        #sidebarCollapseBtn:hover {
+            color: white;
+        }
+
+        /* Quando a sidebar está aberta, o botão fica no canto */
+        #sidebar:not(.collapsed) #sidebarCollapseBtn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: auto; /* Largura automática */
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <!-- Barra Lateral (Menu) -->
+        <nav id="sidebar" class="pt-3 px-3">
+            <!-- O botão agora fica fora do conteúdo que será escondido -->
+            <button type="button" id="sidebarCollapseBtn">☰</button>
+
+            <!-- Conteúdo da sidebar que será ocultado -->
+            <div class="sidebar-content">
+                <h5>Usuário: {{ user.username }}</h5>
+                <p class="small">Cargo: {{ user.role }}</p>
+                <hr style="background-color: gray;">
+                <ul class="nav flex-column">
+                    <li class="nav-item"><a class="nav-link active" href="/">INICIO</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('pedidos_page') }}">PEDIDOS</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('trilhadeira_page') }}">TRILHADEIRA</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('cadastro_itens_page') }}">CADASTRO</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('material_page') }}">MATERIAL</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('cliente_produto_page') }}">CLIENTE X PRODUTO</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">OBRA</a></li>
+                    
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">SAIR</a></li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Área de Conteúdo -->
+        <main id="content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+
+            sidebarCollapseBtn.addEventListener('click', function () {
+                sidebar.classList.toggle('collapsed');
+            });
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

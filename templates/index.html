@@ -1,0 +1,198 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard Principal{% endblock %}
+
+{% block content %}
+<div class="container-fluid pt-3">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-light">Dashboard</h1>
+    </div>
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card bg-dark text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Bem-vindo, {{ user.username }}!</h5>
+                    <p class="card-text">
+                        <strong>Cargo:</strong> {{ user.role }} <br>
+                        <strong>Último acesso:</strong> {{ user.ultimo_acesso.strftime('%d/%m/%Y %H:%M:%S') if user.ultimo_acesso else 'N/A' }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <hr style="background-color: gray;">
+
+    <!-- Slideshow de Status de Produção -->
+    <h4 class="text-light mb-3">Status de Produção - Itens em Andamento</h4>
+    <div id="production-carousel" class="carousel slide" data-ride="carousel" data-interval="7000">
+        <div class="carousel-inner" id="slide-container">
+            <!-- Slides serão inseridos aqui via JavaScript -->
+            <div class="carousel-item active">
+                <div class="d-flex justify-content-center align-items-center" style="height: 180px;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Carregando dados...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <a class="carousel-control-prev" href="#production-carousel" role="button" data-slide="prev">
+            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+            <span class="sr-only">Anterior</span>
+        </a>
+        <a class="carousel-control-next" href="#production-carousel" role="button" data-slide="next">
+            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+            <span class="sr-only">Próximo</span>
+        </a>
+    </div>
+
+    <hr style="background-color: gray; margin-top: 2rem;">
+
+    <!-- Gráfico de Pizza -->
+    <h4 class="text-light mb-3 mt-4">Distribuição de Status</h4>
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card bg-dark">
+                <div class="card-body">
+                    <canvas id="statusPieChart" style="max-height: 400px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Incluindo Chart.js para o gráfico -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Função para obter a cor com base no status, igual à do app desktop
+    function getStatusColor(status) {
+        const colors = {
+            'Aguardando Programação': '#ff4444',
+            'Aguardando PCP': '#2196F3',
+            'Em Produção': '#ffa000',
+            'Liberado para Expedição': '#4CAF50',
+        };
+        return colors[status] || '#757575'; // Cor padrão cinza
+    }
+
+    // Função para criar os cards do slideshow
+    function createSlides(data) {
+        const container = document.getElementById('slide-container');
+        container.innerHTML = ''; // Limpa o spinner de carregamento
+
+        // Agrupa os dados em slides de 3 itens
+        for (let i = 0; i < data.length; i += 3) {
+            const slideItems = data.slice(i, i + 3);
+            const slideDiv = document.createElement('div');
+            slideDiv.className = `carousel-item ${i === 0 ? 'active' : ''}`;
+
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            slideItems.forEach(item => {
+                const color = getStatusColor(item.status_producao);
+                const cardHtml = `
+                    <div class="col-md-4 mb-3">
+                        <div class="card text-white" style="background-color: ${color}; border: 1px solid #555;">
+                            <div class="card-body">
+                                <h6 class="card-title font-weight-bold">${item.nome_cliente}</h6>
+                                <p class="card-text small mb-1"><strong>Equip.:</strong> ${item.equipamento_pai}</p>
+                                <p class="card-text small mb-1"><strong>Conj.:</strong> ${item.conjunto}</p>
+                                <p class="card-text small font-weight-bold mt-2">Status: ${item.status_producao}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                row.innerHTML += cardHtml;
+            });
+            slideDiv.appendChild(row);
+            container.appendChild(slideDiv);
+        }
+    }
+
+    // Função para criar o gráfico de pizza
+    function createPieChart(data) {
+        const statusCounts = {};
+        data.forEach(item => {
+            statusCounts[item.status_producao] = (statusCounts[item.status_producao] || 0) + 1;
+        });
+
+        const labels = Object.keys(statusCounts);
+        const counts = Object.values(statusCounts);
+        const backgroundColors = labels.map(label => getStatusColor(label));
+
+        const ctx = document.getElementById('statusPieChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Status de Produção',
+                    data: counts,
+                    backgroundColor: backgroundColors,
+                    borderColor: '#1f1f1f',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: 'white' // Cor do texto da legenda
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed !== null) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((context.raw / total) * 100).toFixed(1);
+                                    label += `${context.raw} (${percentage}%)`;
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Busca os dados da API e inicializa os componentes
+    fetch('/api/slide-data')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erro na rede ao buscar dados da API');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                console.error('Erro da API:', data.error);
+                document.getElementById('slide-container').innerHTML = '<div class="text-center text-danger">Erro ao carregar dados.</div>';
+                return;
+            }
+            if (data.length > 0) {
+                createSlides(data);
+                createPieChart(data);
+            } else {
+                 document.getElementById('slide-container').innerHTML = '<div class="text-center text-info">Nenhum item em produção para exibir.</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao buscar dados:', error);
+            document.getElementById('slide-container').innerHTML = '<div class="text-center text-danger">Falha ao carregar dados do servidor.</div>';
+        });
+});
+</script>
+{% endblock %}

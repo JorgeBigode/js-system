@@ -1,0 +1,2 @@
+numero_pedido,data_hora,cliente,endereco,nome_equipamento,conjunto,quantidade_prod,setor,lote
+"99999","31/12/2023 23:59","Cliente Exemplo S.A.","Rua dos Testes, 123 - Bairro Modelo","EQUIPAMENTO TESTE 01","CONJUNTO DE TESTE","99","DOBRA","0100"

@@ -1,0 +1,578 @@
+{% extends "layout.html" %}
+
+{% block title %}Cadastro de Itens e Estrutura{% endblock %}
+
+{% block content %}
+<style>
+    /* Estilos para os modais e tabela, consistentes com cliente_produto.html */
+    .modal-body .list-group-item { cursor: pointer; background-color: #343a40; border-color: #454d55; color: white; }
+    .modal-body .list-group-item:hover, .modal-body .list-group-item.active { background-color: #007bff; }
+
+    /* Estilos para a árvore de hierarquia */
+    #hierarchy-tree { background-color: #2b2b2b; color: white; }
+    #hierarchy-tree thead th { background-color: #171717; color: white; border-bottom: 2px solid #454d55; }
+    #hierarchy-tree tbody td { border-color: #454d55; vertical-align: middle; }
+    #hierarchy-tree tbody tr:hover { background-color: #3a3a3a; }
+    #hierarchy-tree .tree-item-child td:first-child { padding-left: 2.5rem; }
+    #hierarchy-tree .tree-item-parent { font-weight: bold; cursor: pointer; }
+    #hierarchy-tree .toggle-icon { margin-right: 8px; font-family: monospace; }
+
+    /* Menu de Contexto */
+    #context-menu { position: fixed; z-index: 10000; width: 220px; background: #2c2c2c; border-radius: 5px; display: none; border: 1px solid #555; padding: 0.5rem 0; }
+    #context-menu .list-group-item { background-color: transparent; color: white; border: none; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.9rem; }
+    #context-menu .list-group-item:hover { background-color: #007bff; }
+
+    /* Estilo para linhas de filhos */
+    .child-item-row { display: flex; align-items: center; margin-bottom: 5px; }
+    .child-item-row .form-control { flex-grow: 1; }
+    .child-item-row .btn { margin-left: 5px; }
+</style>
+
+<!-- Menu de Contexto para a Árvore -->
+<div id="context-menu">
+    <ul class="list-group">
+        <li class="list-group-item" data-action="edit-quantity">✏️ Editar Quantidade</li>
+        <li class="list-group-item" data-action="delete-child-link">🗑️ Excluir Vínculo do Filho</li>
+        <li class="list-group-item" data-action="delete-parent-links">❌ Excluir Vínculos do Pai</li>
+    </ul>
+</div>
+
+<div class="container-fluid pt-3">
+    <h1 class="h3 text-light mb-4">Cadastro de Itens e Estrutura</h1>
+
+    <div class="row">
+        <!-- Coluna da Esquerda: Formulários -->
+        <div class="col-lg-5">
+            <!-- Card de Itens -->
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-header">Itens Cadastrados</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="search-item-input" class="form-control bg-secondary text-white border-dark" placeholder="Buscar item...">
+                    </div>
+                    <select id="items-list" class="form-control bg-dark text-white border-secondary" size="6"></select>
+                    <button id="btn-add-item" class="btn btn-primary btn-block mt-3">Adicionar Novo Item</button>
+                </div>
+            </div>
+
+            <!-- Card de Vínculos -->
+            <div class="card bg-dark border-secondary">
+                <div class="card-header">Criar Vínculo Hierárquico</div>
+                <div class="card-body">
+                    <!-- Item Pai -->
+                    <div class="form-group">
+                        <label>Item Pai</label>
+                        <div class="input-group">
+                            <input type="text" id="parent-item-display" class="form-control bg-dark text-white border-secondary" readonly placeholder="Nenhum item pai selecionado">
+                            <input type="hidden" id="parent-item-id">
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-primary" id="btn-select-parent">Selecionar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Itens Filho -->
+                    <div class="form-group">
+                        <label>Itens Filho</label>
+                        <div id="child-items-container">
+                            <!-- Linhas de filhos serão adicionadas aqui via JS -->
+                        </div>
+                        <button id="btn-add-child" class="btn btn-info btn-sm mt-2">+ Adicionar Filho</button>
+                    </div>
+
+                    <hr class="border-secondary">
+                    <button id="btn-create-link" class="btn btn-success btn-block">Criar Vínculo</button>
+                    <button id="btn-view-parent-links" class="btn btn-secondary btn-block mt-2">Ver Vínculos do Pai</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna da Direita: Hierarquia -->
+        <div class="col-lg-7">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header">Visualizar Vínculos (Estrutura Hierárquica)</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="search-tree-input" class="form-control bg-secondary text-white border-dark" placeholder="Buscar na estrutura...">
+                    </div>
+                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                        <table class="table table-sm" id="hierarchy-tree">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th style="width: 100px;" class="text-center">Quantidade</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hierarchy-tbody">
+                                <!-- Conteúdo da árvore será gerado via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Genérico de Seleção (Reutilizado) -->
+<div class="modal fade" id="selection-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="selection-modal-title">Selecionar</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="selection-modal-search" class="form-control bg-secondary text-white border-dark mb-3" placeholder="Buscar...">
+                <div id="selection-modal-list" class="list-group" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" id="selection-modal-confirm" class="btn btn-primary">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Adicionar/Editar Item -->
+<div class="modal fade" id="item-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="item-modal-title">Adicionar Novo Item</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="item-form">
+                    <input type="hidden" id="item-id">
+                    <div class="form-group">
+                        <label for="item-code">Código</label>
+                        <input type="text" id="item-code" class="form-control bg-secondary text-white border-dark">
+                    </div>
+                    <div class="form-group">
+                        <label for="item-description">Descrição (obrigatório)</label>
+                        <input type="text" id="item-description" class="form-control bg-secondary text-white border-dark" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" id="item-modal-save" class="btn btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Elementos da UI ---
+    const searchItemInput = document.getElementById('search-item-input');
+    const itemsList = document.getElementById('items-list');
+    const btnAddItem = document.getElementById('btn-add-item');
+    
+    const parentItemId = document.getElementById('parent-item-id');
+    const parentItemDisplay = document.getElementById('parent-item-display');
+    const btnSelectParent = document.getElementById('btn-select-parent');
+    const childItemsContainer = document.getElementById('child-items-container');
+    const btnAddChild = document.getElementById('btn-add-child');
+    const btnCreateLink = document.getElementById('btn-create-link');
+    const btnViewParentLinks = document.getElementById('btn-view-parent-links');
+
+    const searchTreeInput = document.getElementById('search-tree-input');
+    const hierarchyTbody = document.getElementById('hierarchy-tbody');
+
+    // --- Modais ---
+    const selectionModal = $('#selection-modal');
+    const itemModal = $('#item-modal');
+    const contextMenu = document.getElementById('context-menu');
+
+    // --- Estado da Aplicação ---
+    let allItems = [];
+    let hierarchyData = [];
+    let currentModalConfirmCallback = null;
+    let selectedTreeItem = null;
+
+    // --- Funções de API ---
+    async function fetchData(url, options = {}) {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Erro HTTP: ${response.status}` }));
+                throw new Error(errorData.error || `Erro HTTP: ${response.status}`);
+            }
+            return response.headers.get('Content-Type')?.includes('json') ? await response.json() : { message: 'Operação bem-sucedida.' };
+        } catch (error) {
+            console.error(`Erro ao buscar dados de ${url}:`, error);
+            alert(`Falha na comunicação com o servidor: ${error.message}`);
+            return null;
+        }
+    }
+
+    // --- Lógica de Itens ---
+    async function loadItems() {
+        const data = await fetchData('/api/itens');
+        if (data) {
+            allItems = data;
+            renderItemsList();
+        }
+    }
+
+    function renderItemsList(filter = '') {
+        itemsList.innerHTML = '';
+        const lowerFilter = filter.toLowerCase();
+        allItems.forEach(item => {
+            const itemText = `(${item.codigo}) ${item.descricao}`;
+            if (itemText.toLowerCase().includes(lowerFilter)) {
+                const option = new Option(itemText, item.id);
+                itemsList.add(option);
+            }
+        });
+    }
+
+    searchItemInput.addEventListener('input', () => renderItemsList(searchItemInput.value));
+
+    btnAddItem.addEventListener('click', () => openItemModal());
+
+    function openItemModal(item = null) {
+        const modalTitle = document.getElementById('item-modal-title');
+        const form = document.getElementById('item-form');
+        form.reset();
+        document.getElementById('item-id').value = '';
+
+        if (item) {
+            modalTitle.textContent = 'Editar Item';
+            document.getElementById('item-id').value = item.id;
+            document.getElementById('item-code').value = item.codigo;
+            document.getElementById('item-description').value = item.descricao;
+        } else {
+            modalTitle.textContent = 'Adicionar Novo Item';
+        }
+        itemModal.modal('show');
+    }
+
+    document.getElementById('item-modal-save').addEventListener('click', async () => {
+        const id = document.getElementById('item-id').value;
+        const codigo = document.getElementById('item-code').value.trim();
+        const descricao = document.getElementById('item-description').value.trim();
+
+        if (!descricao) {
+            alert('A descrição é obrigatória.');
+            return;
+        }
+
+        const url = id ? `/api/item/${id}` : '/api/item';
+        const method = id ? 'PUT' : 'POST';
+
+        const result = await fetchData(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ codigo, descricao })
+        });
+
+        if (result) {
+            alert(result.message || 'Item salvo com sucesso!');
+            itemModal.modal('hide');
+            await loadAllData();
+        }
+    });
+
+    // --- Lógica de Vínculos ---
+    function createChildSelector() {
+        const childId = `child-${Date.now()}`;
+        const row = document.createElement('div');
+        row.className = 'child-item-row';
+        row.id = childId;
+        row.innerHTML = `
+            <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" readonly placeholder="Selecione um item filho">
+            <input type="hidden">
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary ml-2" value="1" min="1" style="width: 70px; flex-grow: 0;">
+            <button type="button" class="btn btn-sm btn-outline-primary btn-select-child">...</button>
+            <button type="button" class="btn btn-sm btn-danger btn-remove-child">&times;</button>
+        `;
+        childItemsContainer.appendChild(row);
+
+        row.querySelector('.btn-select-child').addEventListener('click', () => {
+            openSelectionModal('Selecionar Item Filho', allItems, 'display', 'id', (id, display) => {
+                row.querySelector('input[type="text"]').value = display;
+                row.querySelector('input[type="hidden"]').value = id;
+            });
+        });
+
+        row.querySelector('.btn-remove-child').addEventListener('click', () => row.remove());
+    }
+
+    btnAddChild.addEventListener('click', createChildSelector);
+
+    btnSelectParent.addEventListener('click', () => {
+        openSelectionModal('Selecionar Item Pai', allItems, 'display', 'id', (id, display) => {
+            parentItemId.value = id;
+            parentItemDisplay.value = display;
+        });
+    });
+
+    btnCreateLink.addEventListener('click', async () => {
+        const id_item_pai = parentItemId.value;
+        if (!id_item_pai) {
+            alert('Selecione um item pai.');
+            return;
+        }
+
+        const filhos = [];
+        childItemsContainer.querySelectorAll('.child-item-row').forEach(row => {
+            const id_filho = row.querySelector('input[type="hidden"]').value;
+            const quantidade = row.querySelector('input[type="number"]').value;
+            if (id_filho && quantidade > 0) {
+                filhos.push({ id_item_filho: id_filho, quantidade: quantidade });
+            }
+        });
+
+        if (filhos.length === 0) {
+            alert('Adicione pelo menos um item filho válido.');
+            return;
+        }
+
+        const result = await fetchData('/api/item-composicao', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_item_pai, filhos })
+        });
+
+        if (result) {
+            alert(result.message || 'Vínculo criado com sucesso!');
+            parentItemId.value = '';
+            parentItemDisplay.value = '';
+            childItemsContainer.innerHTML = '';
+            await loadHierarchy();
+        }
+    });
+    
+    btnViewParentLinks.addEventListener('click', () => {
+        const parentId = parentItemId.value;
+        if (!parentId) {
+            alert("Selecione um item pai para visualizar seus vínculos.");
+            return;
+        }
+        searchTreeInput.value = parentItemDisplay.value;
+        renderHierarchy(searchTreeInput.value);
+        const parentRow = document.querySelector(`tr[data-item-id='${parentId}']`);
+        if (parentRow) {
+            parentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            toggleChildren(parentId, true); // Expande o pai
+        } else {
+            alert("O item pai selecionado não possui vínculos cadastrados.");
+        }
+    });
+
+    // --- Lógica da Árvore de Hierarquia ---
+    async function loadHierarchy() {
+        const data = await fetchData('/api/item-composicao');
+        if (data) {
+            // Agrupa filhos por pai
+            const grouped = data.reduce((acc, item) => {
+                const { id_item_pai, pai_codigo, pai_desc, ...child } = item;
+                if (!acc[id_item_pai]) {
+                    acc[id_item_pai] = {
+                        id: id_item_pai,
+                        codigo: pai_codigo,
+                        descricao: pai_desc,
+                        children: []
+                    };
+                }
+                acc[id_item_pai].children.push(child);
+                return acc;
+            }, {});
+            hierarchyData = Object.values(grouped);
+            renderHierarchy();
+        }
+    }
+
+    function renderHierarchy(filter = '') {
+        hierarchyTbody.innerHTML = '';
+        const lowerFilter = filter.toLowerCase();
+
+        hierarchyData.forEach(parent => {
+            const parentText = `(${parent.codigo}) ${parent.descricao}`;
+            const parentMatches = parentText.toLowerCase().includes(lowerFilter);
+            
+            const childRows = parent.children.map(child => {
+                const childText = `(${child.filho_codigo}) ${child.filho_desc}`;
+                return {
+                    text: childText,
+                    matches: childText.toLowerCase().includes(lowerFilter),
+                    html: `
+                        <tr class="tree-item-child" data-parent-id="${parent.id}" data-item-id="${child.id_item_filho}" style="display: none;">
+                            <td>${childText}</td>
+                            <td class="text-center">x${child.quantidade}</td>
+                        </tr>
+                    `
+                };
+            });
+
+            const anyChildMatches = childRows.some(c => c.matches);
+
+            if (parentMatches || anyChildMatches) {
+                const parentRow = document.createElement('tr');
+                parentRow.className = 'tree-item-parent';
+                parentRow.dataset.itemId = parent.id;
+                parentRow.innerHTML = `
+                    <td colspan="2"><span class="toggle-icon">[+]</span>${parentText}</td>
+                `;
+                hierarchyTbody.appendChild(parentRow);
+                
+                childRows.forEach(childData => {
+                    if (lowerFilter === '' || parentMatches || childData.matches) {
+                         hierarchyTbody.insertAdjacentHTML('beforeend', childData.html);
+                    }
+                });
+
+                if (anyChildMatches && !parentMatches && lowerFilter) {
+                    toggleChildren(parent.id, true);
+                }
+            }
+        });
+    }
+    
+    function toggleChildren(parentId, forceOpen = null) {
+        const parentRow = hierarchyTbody.querySelector(`tr[data-item-id='${parentId}']`);
+        const children = hierarchyTbody.querySelectorAll(`tr[data-parent-id='${parentId}']`);
+        const icon = parentRow.querySelector('.toggle-icon');
+        const isVisible = children.length > 0 && children[0].style.display !== 'none';
+
+        const open = forceOpen === null ? !isVisible : forceOpen;
+
+        children.forEach(child => child.style.display = open ? '' : 'none');
+        icon.textContent = open ? '[-] ' : '[+] ';
+    }
+
+    hierarchyTbody.addEventListener('click', e => {
+        const parentRow = e.target.closest('.tree-item-parent');
+        if (parentRow) {
+            toggleChildren(parentRow.dataset.itemId);
+        }
+    });
+
+    searchTreeInput.addEventListener('input', () => renderHierarchy(searchTreeInput.value));
+
+    // --- Lógica do Menu de Contexto ---
+    hierarchyTbody.addEventListener('contextmenu', e => {
+        const row = e.target.closest('tr');
+        if (!row || !row.dataset.itemId) return;
+        
+        e.preventDefault();
+        selectedTreeItem = {
+            isParent: row.classList.contains('tree-item-parent'),
+            parentId: row.dataset.parentId || row.dataset.itemId,
+            childId: row.classList.contains('tree-item-child') ? row.dataset.itemId : null
+        };
+
+        // Mostrar/ocultar opções com base no tipo de item
+        contextMenu.querySelector('[data-action="edit-quantity"]').style.display = selectedTreeItem.isParent ? 'none' : 'block';
+        contextMenu.querySelector('[data-action="delete-child-link"]').style.display = selectedTreeItem.isParent ? 'none' : 'block';
+        contextMenu.querySelector('[data-action="delete-parent-links"]').style.display = selectedTreeItem.isParent ? 'block' : 'none';
+
+        contextMenu.style.top = `${e.clientY}px`;
+        contextMenu.style.left = `${e.clientX}px`;
+        contextMenu.style.display = 'block';
+    });
+
+    document.addEventListener('click', () => contextMenu.style.display = 'none');
+
+    contextMenu.addEventListener('click', async e => {
+        const action = e.target.dataset.action;
+        if (!action || !selectedTreeItem) return;
+
+        const { isParent, parentId, childId } = selectedTreeItem;
+
+        if (action === 'edit-quantity' && !isParent) {
+            const newQty = prompt('Digite a nova quantidade:', '1');
+            if (newQty !== null && !isNaN(newQty) && newQty > 0) {
+                const result = await fetchData(`/api/item-composicao`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_item_pai: parentId, id_item_filho: childId, quantidade: newQty })
+                });
+                if (result) { alert(result.message); await loadHierarchy(); }
+            }
+        } else if (action === 'delete-child-link' && !isParent) {
+            if (confirm('Tem certeza que deseja excluir este vínculo de filho?')) {
+                const result = await fetchData(`/api/item-composicao`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_item_pai: parentId, id_item_filho: childId })
+                });
+                if (result) { alert(result.message); await loadHierarchy(); }
+            }
+        } else if (action === 'delete-parent-links' && isParent) {
+            if (confirm('ATENÇÃO! Tem certeza que deseja excluir TODOS os vínculos deste item pai?')) {
+                const result = await fetchData(`/api/item-composicao/${parentId}`, { method: 'DELETE' });
+                if (result) { alert(result.message); await loadHierarchy(); }
+            }
+        }
+    });
+
+    // --- Lógica do Modal de Seleção (Reutilizada) ---
+    function openSelectionModal(title, items, displayKey, valueKey, onConfirm) {
+        document.getElementById('selection-modal-title').textContent = title;
+        const modalList = document.getElementById('selection-modal-list');
+        const modalSearch = document.getElementById('selection-modal-search');
+        modalSearch.value = '';
+        modalList.innerHTML = '';
+
+        const preparedItems = items.map(item => ({
+            ...item,
+            display: `(${item.codigo}) ${item.descricao}`
+        }));
+
+        function renderModalList(filter = '') {
+            modalList.innerHTML = '';
+            preparedItems.forEach(item => {
+                if (item.display.toLowerCase().includes(filter.toLowerCase())) {
+                    const div = document.createElement('div');
+                    div.className = 'list-group-item list-group-item-action';
+                    div.textContent = item[displayKey];
+                    div.dataset.value = item[valueKey];
+                    div.dataset.display = item[displayKey];
+                    modalList.appendChild(div);
+                }
+            });
+        }
+
+        renderModalList();
+        modalSearch.oninput = () => renderModalList(modalSearch.value);
+
+        currentModalConfirmCallback = () => {
+            const selected = modalList.querySelector('.active');
+            if (selected) {
+                onConfirm(selected.dataset.value, selected.dataset.display);
+                selectionModal.modal('hide');
+            } else {
+                alert('Por favor, selecione um item.');
+            }
+        };
+        selectionModal.modal('show');
+    }
+
+    document.getElementById('selection-modal-list').addEventListener('click', e => {
+        if (e.target.classList.contains('list-group-item')) {
+            document.querySelectorAll('#selection-modal-list .list-group-item').forEach(el => el.classList.remove('active'));
+            e.target.classList.add('active');
+        }
+    });
+
+    document.getElementById('selection-modal-confirm').addEventListener('click', () => {
+        if (currentModalConfirmCallback) currentModalConfirmCallback();
+    });
+
+    // --- Inicialização ---
+    async function loadAllData() {
+        await loadItems();
+        await loadHierarchy();
+    }
+
+    loadAllData();
+    createChildSelector(); // Adiciona a primeira linha de filho
+});
+</script>
+{% endblock %}

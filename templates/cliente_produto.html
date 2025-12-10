@@ -1,0 +1,432 @@
+{% extends "layout.html" %}
+
+{% block title %}Cliente x Produto{% endblock %}
+
+{% block content %}
+<style>
+    /* Estilos para os modais de seleção */
+    .modal-body .list-group-item {
+        cursor: pointer;
+        background-color: #343a40;
+        border-color: #454d55;
+        color: white;
+    }
+    .modal-body .list-group-item:hover,
+    .modal-body .list-group-item.active {
+        background-color: #007bff;
+    }
+
+    /* Estilos para a tabela de vínculos */
+    #vinculos-table {
+        background-color: #2b2b2b;
+        color: white;
+    }
+    #vinculos-table thead th {
+        background-color: #171717;
+        color: white;
+        border-bottom: 2px solid #454d55;
+    }
+    #vinculos-table tbody td {
+        border-color: #454d55;
+        vertical-align: middle;
+    }
+    #vinculos-table tbody tr:hover {
+        background-color: #3a3a3a;
+    }
+
+    /* Menu de Contexto Customizado */
+    #context-menu {
+        position: fixed;
+        z-index: 10000;
+        width: 200px;
+        background: #2c2c2c;
+        border-radius: 5px;
+        display: none;
+        border: 1px solid #555;
+        padding: 0.5rem 0;
+    }
+    #context-menu .list-group-item {
+        background-color: transparent;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+    #context-menu .list-group-item:hover {
+        background-color: #007bff;
+    }
+</style>
+
+<!-- Menu de Contexto para a Tabela -->
+<div id="context-menu">
+    <ul class="list-group">
+        <li class="list-group-item" data-action="alterar-quantidade">Alterar Quantidade</li>
+        <li class="list-group-item" data-action="excluir">Excluir Vínculo</li>
+    </ul>
+</div>
+
+<div class="container-fluid pt-3">
+    <h1 class="h3 text-light mb-4">Vincular Itens ao Pedido</h1>
+
+    <!-- Formulário Principal -->
+    <div class="card bg-dark border-secondary mb-4">
+        <div class="card-body">
+            <!-- Linha 1: Pedido e Item Raiz -->
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <label>Pedido</label>
+                    <div class="input-group">
+                        <input type="text" id="pedido-display" class="form-control bg-dark text-white border-secondary" readonly placeholder="Nenhum pedido selecionado">
+                        <input type="hidden" id="pedido-id">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-primary" id="btn-select-pedido">Selecionar</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group col-md-6">
+                    <label>Item Raiz (Equipamento)</label>
+                    <div class="input-group">
+                        <input type="text" id="item-raiz-display" class="form-control bg-dark text-white border-secondary" readonly placeholder="Nenhum item raiz selecionado">
+                        <input type="hidden" id="item-raiz-id">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-primary" id="btn-select-item-raiz">Selecionar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Linha 2: Itens da Composição e Quantidade -->
+            <div class="form-row">
+                <div class="form-group col-md-8">
+                    <label for="itens-composicao">Itens da Composição</label>
+                    <select id="itens-composicao" class="form-control bg-dark text-white border-secondary" multiple style="height: 150px;"></select>
+                </div>
+                <div class="form-group col-md-4">
+                    <label for="quantidade">Quantidade</label>
+                    <input type="number" id="quantidade" class="form-control bg-dark text-white border-secondary" value="1" min="0">
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="include-desc" checked>
+                        <label class="form-check-label" for="include-desc">
+                            Incluir itens subsequentes (filhos/netos)
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Linha 3: Botão de Salvar -->
+            <button id="btn-save-vinculo" class="btn btn-success mt-3">Salvar Vínculo</button>
+        </div>
+    </div>
+
+    <!-- Tabela de Itens Vinculados -->
+    <div class="card bg-dark border-secondary">
+        <div class="card-header">
+            Itens Já Vinculados ao Pedido
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm" id="vinculos-table">
+                    <thead>
+                        <tr>
+                            <th>ID Vínculo</th>
+                            <th>ID Item</th>
+                            <th>Descrição do Item</th>
+                            <th>Quantidade</th>
+                            <th>Caminho na Estrutura</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vinculos-tbody">
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">Selecione um pedido para ver os itens vinculados.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Genérico de Seleção -->
+<div class="modal fade" id="selection-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="selection-modal-title">Selecionar</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="selection-modal-search" class="form-control bg-secondary text-white border-dark mb-3" placeholder="Buscar...">
+                <div id="selection-modal-list" class="list-group" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Itens serão inseridos aqui via JS -->
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" id="selection-modal-confirm" class="btn btn-primary">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Elementos do Formulário
+    const pedidoIdInput = document.getElementById('pedido-id');
+    const pedidoDisplayInput = document.getElementById('pedido-display');
+    const itemRaizIdInput = document.getElementById('item-raiz-id');
+    const itemRaizDisplayInput = document.getElementById('item-raiz-display');
+    const composicaoSelect = document.getElementById('itens-composicao');
+    const quantidadeInput = document.getElementById('quantidade');
+    const includeDescCheckbox = document.getElementById('include-desc');
+
+    // Botões
+    const btnSelectPedido = document.getElementById('btn-select-pedido');
+    const btnSelectItemRaiz = document.getElementById('btn-select-item-raiz');
+    const btnSaveVinculo = document.getElementById('btn-save-vinculo');
+
+    // Tabela de Vínculos
+    const vinculosTbody = document.getElementById('vinculos-tbody');
+
+    // Modal de Seleção
+    const selectionModal = $('#selection-modal');
+    const modalTitle = document.getElementById('selection-modal-title');
+    const modalSearch = document.getElementById('selection-modal-search');
+    const modalList = document.getElementById('selection-modal-list');
+    const modalConfirmBtn = document.getElementById('selection-modal-confirm');
+
+    // Menu de Contexto
+    const contextMenu = document.getElementById('context-menu');
+    let selectedVinculoId = null;
+
+    // --- Funções Auxiliares ---
+    async function fetchData(url, options = {}) {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Erro HTTP: ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`Erro ao buscar dados de ${url}:`, error);
+            alert(`Falha na comunicação com o servidor: ${error.message}`);
+            return null;
+        }
+    }
+
+    // --- Lógica do Modal de Seleção ---
+    let currentModalConfirmCallback = null;
+
+    function openSelectionModal(title, items, displayKey, valueKey, onConfirm) {
+        modalTitle.textContent = title;
+        modalSearch.value = '';
+        modalList.innerHTML = '';
+
+        items.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'list-group-item list-group-item-action';
+            div.textContent = item[displayKey];
+            div.dataset.value = item[valueKey];
+            div.dataset.display = item[displayKey];
+            modalList.appendChild(div);
+        });
+
+        currentModalConfirmCallback = () => {
+            const selectedItem = modalList.querySelector('.active');
+            if (selectedItem) {
+                onConfirm(selectedItem.dataset.value, selectedItem.dataset.display);
+                selectionModal.modal('hide');
+            } else {
+                alert('Por favor, selecione um item.');
+            }
+        };
+
+        selectionModal.modal('show');
+    }
+
+    modalList.addEventListener('click', e => {
+        if (e.target.classList.contains('list-group-item')) {
+            modalList.querySelectorAll('.list-group-item').forEach(el => el.classList.remove('active'));
+            e.target.classList.add('active');
+        }
+    });
+
+    modalSearch.addEventListener('input', () => {
+        const filter = modalSearch.value.toLowerCase();
+        modalList.querySelectorAll('.list-group-item').forEach(item => {
+            const text = item.textContent.toLowerCase();
+            item.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+
+    modalConfirmBtn.addEventListener('click', () => {
+        if (currentModalConfirmCallback) {
+            currentModalConfirmCallback();
+        }
+    });
+
+    // --- Carregamento de Dados e Eventos ---
+
+    btnSelectPedido.addEventListener('click', async () => {
+        const pedidos = await fetchData('/api/pedidos');
+        if (pedidos) {
+            openSelectionModal('Selecionar Pedido', pedidos, 'display', 'id', (id, display) => {
+                pedidoIdInput.value = id;
+                pedidoDisplayInput.value = display;
+                loadVinculos(id);
+            });
+        }
+    });
+
+    btnSelectItemRaiz.addEventListener('click', async () => {
+        const itensRaiz = await fetchData('/api/itens-raiz');
+        if (itensRaiz) {
+            openSelectionModal('Selecionar Item Raiz', itensRaiz, 'display', 'id', (id, display) => {
+                itemRaizIdInput.value = id;
+                itemRaizDisplayInput.value = display;
+                loadComposicao(id);
+            });
+        }
+    });
+
+    async function loadVinculos(idPedido) {
+        vinculosTbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+        const vinculos = await fetchData(`/api/vinculos-pedido/${idPedido}`);
+        vinculosTbody.innerHTML = '';
+
+        if (vinculos && vinculos.length > 0) {
+            vinculos.forEach(v => {
+                const tr = document.createElement('tr');
+                tr.dataset.vinculoId = v.id_vinculo;
+                tr.innerHTML = `
+                    <td>${v.id_vinculo || 'N/A'}</td>
+                    <td>${v.id_item || 'N/A'}</td>
+                    <td>${v.descricao_item || 'N/A'}</td>
+                    <td>${v.quantidade || 'N/A'}</td>
+                    <td>${v.caminho_estrutura || 'N/A'}</td>
+                    <td>${v.status || 'N/A'}</td>
+                `;
+                vinculosTbody.appendChild(tr);
+            });
+        } else {
+            vinculosTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum item vinculado a este pedido.</td></tr>';
+        }
+    }
+
+    async function loadComposicao(idItemRaiz) {
+        composicaoSelect.innerHTML = '<option>Carregando...</option>';
+        const composicao = await fetchData(`/api/composicao/${idItemRaiz}`);
+        composicaoSelect.innerHTML = '';
+
+        if (composicao && composicao.length > 0) {
+            composicao.forEach(item => {
+                const option = new Option(item.display, item.id_composicao);
+                composicaoSelect.add(option);
+            });
+        } else {
+            composicaoSelect.innerHTML = '<option disabled>Nenhum item de composição encontrado.</option>';
+        }
+    }
+
+    // --- Lógica de Salvar Vínculo ---
+
+    btnSaveVinculo.addEventListener('click', async () => {
+        const idPedido = pedidoIdInput.value;
+        const idItemRaiz = itemRaizIdInput.value;
+        const selectedOptions = [...composicaoSelect.selectedOptions];
+        const quantidade = quantidadeInput.value;
+
+        if (!idPedido) {
+            alert('Selecione um pedido.');
+            return;
+        }
+        if (!idItemRaiz) {
+            alert('Selecione um item raiz.');
+            return;
+        }
+        if (selectedOptions.length === 0) {
+            alert('Selecione pelo menos um item da composição.');
+            return;
+        }
+        if (parseFloat(quantidade) <= 0) {
+            alert('A quantidade deve ser maior que zero.');
+            return;
+        }
+
+        const data = {
+            id_pedido: idPedido,
+            id_item_raiz: idItemRaiz,
+            id_composicoes: selectedOptions.map(opt => opt.value),
+            quantidade_base: quantidade,
+            incluir_descendentes: includeDescCheckbox.checked
+        };
+
+        const result = await fetchData('/api/vincular-item', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (result) {
+            alert(result.message);
+            loadVinculos(idPedido); // Recarrega a lista de vínculos
+        }
+    });
+
+    // --- Lógica do Menu de Contexto ---
+
+    vinculosTbody.addEventListener('contextmenu', e => {
+        const tr = e.target.closest('tr');
+        if (!tr || !tr.dataset.vinculoId) return;
+
+        e.preventDefault();
+        selectedVinculoId = tr.dataset.vinculoId;
+
+        contextMenu.style.top = `${e.clientY}px`;
+        contextMenu.style.left = `${e.clientX}px`;
+        contextMenu.style.display = 'block';
+    });
+
+    document.addEventListener('click', () => {
+        contextMenu.style.display = 'none';
+        selectedVinculoId = null;
+    });
+
+    contextMenu.addEventListener('click', async e => {
+        const action = e.target.dataset.action;
+        if (!action || !selectedVinculoId) return;
+
+        const idPedido = pedidoIdInput.value;
+
+        if (action === 'alterar-quantidade') {
+            const novaQuantidade = prompt('Digite a nova quantidade:', '1');
+            if (novaQuantidade !== null && !isNaN(novaQuantidade) && parseFloat(novaQuantidade) >= 0) {
+                const result = await fetchData(`/api/vinculo/${selectedVinculoId}/quantidade`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantidade: parseFloat(novaQuantidade) })
+                });
+                if (result) {
+                    alert(result.message);
+                    loadVinculos(idPedido);
+                }
+            }
+        } else if (action === 'excluir') {
+            if (confirm('Tem certeza que deseja excluir este vínculo?')) {
+                const result = await fetchData(`/api/vinculo/${selectedVinculoId}`, {
+                    method: 'DELETE'
+                });
+                if (result) {
+                    alert(result.message);
+                    loadVinculos(idPedido);
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

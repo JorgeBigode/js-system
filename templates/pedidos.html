@@ -1,0 +1,385 @@
+{% extends "layout.html" %}
+
+{% block title %}Gerenciamento de Pedidos{% endblock %}
+
+{% block content %}
+<div class="container-fluid pt-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0 text-light">Gerenciamento de Pedidos</h1>
+        <button class="btn btn-primary" id="btn-novo-pedido">Novo Pedido</button>
+    </div>
+
+    <!-- Barra de Busca -->
+    <div class="form-group">
+        <input type="text" id="search-input" class="form-control bg-dark text-white border-secondary" placeholder="Buscar por pedido, cliente ou localidade...">
+    </div>
+
+    <!-- Tabela de Pedidos -->
+    <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Localidade</th>
+                    <th>Data Entrega</th>
+                    <th>PDF</th>
+                    <th>Folha</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="pedidos-table-body">
+                <!-- Linhas serão inseridas aqui via JavaScript -->
+                <tr><td colspan="6" class="text-center"><div class="spinner-border text-primary" role="status"><span class="sr-only">Carregando...</span></div></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal de Edição/Criação (será controlado via JS) -->
+<div class="modal fade" id="pedido-modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="modal-title">Novo Pedido</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="pedido-form">
+                    <input type="hidden" id="pedido-id">
+                    <div class="form-group">
+                        <label for="numero-pedido">Número do Pedido</label>
+                        <input type="text" class="form-control bg-dark text-white border-secondary" id="numero-pedido" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="cliente">Cliente</label>
+                        <div class="input-group">
+                            <select class="form-control bg-dark text-white border-secondary" id="cliente" required></select>
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-primary" type="button" id="btn-novo-cliente" title="Adicionar Novo Cliente">+</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="endereco">Endereço</label>
+                        <select class="form-control bg-dark text-white border-secondary" id="endereco" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="data-entrega">Data de Entrega</label>
+                        <input type="date" class="form-control bg-dark text-white border-secondary" id="data-entrega" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="pdf-upload">PDF do Pedido (Opcional)</label>
+                        <input type="file" class="form-control-file" id="pdf-upload" accept=".pdf">
+                        <small id="pdf-link-container" class="form-text text-muted"></small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" id="btn-excluir" class="btn btn-danger mr-auto" style="display: none;">Excluir</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" id="btn-salvar" class="btn btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Novo Cliente -->
+<div class="modal fade" id="cliente-modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Novo Cliente</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="cliente-form">
+                    <div class="form-group">
+                        <label for="novo-cliente-nome">Nome do Cliente</label>
+                        <input type="text" class="form-control bg-dark text-white border-secondary" id="novo-cliente-nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="novo-cliente-endereco">Endereço</label>
+                        <input type="text" class="form-control bg-dark text-white border-secondary" id="novo-cliente-endereco" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" id="btn-salvar-cliente" class="btn btn-primary">Salvar Cliente</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let allPedidos = [];
+    let allClientes = []; // Cache para os nomes dos clientes
+    const tableBody = document.getElementById('pedidos-table-body');
+    const searchInput = document.getElementById('search-input');
+
+    // Função para renderizar a tabela
+    function renderTable(pedidos) {
+        tableBody.innerHTML = '';
+        if (pedidos.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum pedido encontrado.</td></tr>';
+            return;
+        }
+
+        pedidos.forEach(pedido => {
+            const dataEntrega = pedido.data_entrega ? new Date(pedido.data_entrega + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/A';
+            const pdfName = pedido.pdf ? pedido.pdf.split(/[\\/]/).pop() : null;
+            const pdfLink = pdfName ? `<a href="/pdfs/${pdfName}" target="_blank">📄 Ver PDF</a>` : '-';
+            const folhaLink = `<a href="/api/pedidos/${pedido.idpedido}/gerar-folha" title="Gerar Folha de Pedido">📋 Gerar</a>`;
+
+            const row = `
+                <tr>
+                    <td>${pedido.numero_pedido}</td>
+                    <td>${pedido.cliente}</td>
+                    <td>${pedido.endereco}</td>
+                    <td>${dataEntrega}</td>
+                    <td>${pdfLink}</td>
+                    <td>${folhaLink}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info btn-edit" data-id="${pedido.idpedido}">Editar</button>
+                    </td>
+                </tr>
+            `;
+            tableBody.innerHTML += row;
+        });
+    }
+
+    // Função para carregar os pedidos da API
+    async function loadPedidos() {
+        try {
+            const response = await fetch('/api/pedidos');
+            if (!response.ok) throw new Error('Erro ao buscar pedidos');
+            allPedidos = await response.json();
+            renderTable(allPedidos);
+        } catch (error) {
+            console.error(error);
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Falha ao carregar pedidos.</td></tr>';
+        }
+    }
+
+    // Função para carregar clientes no select
+    async function loadClientes(selectElement, selectedCliente = null) {
+        try {
+            const response = await fetch('/api/clientes');
+            if (!response.ok) throw new Error('Erro ao buscar clientes');
+            allClientes = await response.json();
+            
+            selectElement.innerHTML = '<option value="">Selecione um cliente...</option>';
+            allClientes.forEach(cliente => {
+                const option = new Option(cliente, cliente);
+                selectElement.add(option);
+            });
+
+            if (selectedCliente) {
+                selectElement.value = selectedCliente;
+            }
+        } catch (error) {
+            console.error(error);
+            selectElement.innerHTML = '<option value="">Falha ao carregar clientes</option>';
+        }
+    }
+
+    // Função para carregar endereços baseado no cliente selecionado
+    async function loadEnderecos(clienteNome, selectElement, selectedEnderecoId = null) {
+        selectElement.innerHTML = '<option value="">Carregando endereços...</option>';
+        if (!clienteNome) {
+            selectElement.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/enderecos?cliente=${encodeURIComponent(clienteNome)}`);
+            if (!response.ok) throw new Error('Erro ao buscar endereços');
+            const enderecos = await response.json();
+
+            selectElement.innerHTML = '<option value="">Selecione um endereço...</option>';
+            enderecos.forEach(end => {
+                // Usamos o idcliente como valor, pois é isso que a tabela `pedido` armazena
+                const option = new Option(end.endereco, end.idcliente);
+                selectElement.add(option);
+            });
+
+            if (selectedEnderecoId) {
+                selectElement.value = selectedEnderecoId;
+            }
+        } catch (error) {
+            console.error(error);
+            selectElement.innerHTML = '<option value="">Falha ao carregar endereços</option>';
+        }
+    }
+
+    // Filtro da busca
+    searchInput.addEventListener('keyup', () => {
+        const term = searchInput.value.toLowerCase();
+        const filteredPedidos = allPedidos.filter(p =>
+            p.numero_pedido.toLowerCase().includes(term) ||
+            p.cliente.toLowerCase().includes(term) ||
+            p.endereco.toLowerCase().includes(term)
+        );
+        renderTable(filteredPedidos);
+    });
+
+    // Abrir modal para novo pedido
+    document.getElementById('btn-novo-pedido').addEventListener('click', async () => {
+        document.getElementById('pedido-form').reset();
+        document.getElementById('pedido-id').value = '';
+        document.getElementById('modal-title').textContent = 'Novo Pedido';
+        document.getElementById('btn-excluir').style.display = 'none';
+        document.getElementById('pdf-link-container').innerHTML = '';
+        
+        const clienteSelect = document.getElementById('cliente');
+        const enderecoSelect = document.getElementById('endereco');
+        
+        await loadClientes(clienteSelect);
+        enderecoSelect.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
+
+        $('#pedido-modal').modal('show');
+    });
+
+    // Abrir modal para editar (delegação de evento)
+    tableBody.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('btn-edit')) {
+            const pedidoId = e.target.dataset.id;
+            const pedido = allPedidos.find(p => p.idpedido == pedidoId);
+
+            if (pedido) {
+                document.getElementById('pedido-form').reset();
+                document.getElementById('pedido-id').value = pedido.idpedido;
+                document.getElementById('modal-title').textContent = 'Editar Pedido';
+                
+                document.getElementById('numero-pedido').value = pedido.numero_pedido;
+                document.getElementById('data-entrega').value = pedido.data_entrega;
+
+                // Carregar e selecionar cliente/endereço
+                const clienteSelect = document.getElementById('cliente');
+                const enderecoSelect = document.getElementById('endereco');
+                await loadClientes(clienteSelect, pedido.cliente);
+                await loadEnderecos(pedido.cliente, enderecoSelect, pedido.idcliente);
+
+                const pdfLinkContainer = document.getElementById('pdf-link-container');
+                const pdfName = pedido.pdf ? pedido.pdf.split(/[\\/]/).pop() : null;
+                if (pdfName) {
+                    pdfLinkContainer.innerHTML = `Arquivo atual: <a href="/pdfs/${pdfName}" target="_blank">${pdfName}</a>`;
+                } else {
+                    pdfLinkContainer.innerHTML = '';
+                }
+
+                // Mostra o botão de excluir se o usuário for admin
+                if ('{{ user.role }}' === 'admin') {
+                    document.getElementById('btn-excluir').style.display = 'block';
+                }
+
+                $('#pedido-modal').modal('show');
+            }
+        }
+    });
+
+    // Atualizar endereços quando o cliente muda
+    document.getElementById('cliente').addEventListener('change', (e) => {
+        const clienteNome = e.target.value;
+        const enderecoSelect = document.getElementById('endereco');
+        loadEnderecos(clienteNome, enderecoSelect);
+    });
+
+    // Abrir modal de novo cliente
+    document.getElementById('btn-novo-cliente').addEventListener('click', () => {
+        document.getElementById('cliente-form').reset();
+        $('#cliente-modal').modal('show');
+    });
+
+    // Salvar novo cliente
+    document.getElementById('btn-salvar-cliente').addEventListener('click', async () => {
+        const nome = document.getElementById('novo-cliente-nome').value.trim();
+        const endereco = document.getElementById('novo-cliente-endereco').value.trim();
+
+        if (!nome || !endereco) {
+            alert('Por favor, preencha todos os campos.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/clientes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cliente: nome, endereco: endereco })
+            });
+
+            if (!response.ok) throw new Error('Falha ao salvar o cliente.');
+
+            const result = await response.json();
+            alert(result.message);
+            $('#cliente-modal').modal('hide');
+
+            // Recarrega a lista de clientes no modal de pedido e seleciona o novo cliente
+            const clienteSelect = document.getElementById('cliente');
+            await loadClientes(clienteSelect, nome);
+            // Dispara o evento 'change' para carregar os endereços do novo cliente
+            clienteSelect.dispatchEvent(new Event('change'));
+
+        } catch (error) {
+            console.error(error);
+            alert('Ocorreu um erro ao salvar o cliente.');
+        }
+    });
+
+    // Salvar (criar ou atualizar) pedido
+    document.getElementById('btn-salvar').addEventListener('click', async () => {
+        const pedidoId = document.getElementById('pedido-id').value;
+        const numeroPedido = document.getElementById('numero-pedido').value;
+        const idCliente = document.getElementById('endereco').value; // O valor do select de endereço é o idcliente
+        const dataEntrega = document.getElementById('data-entrega').value;
+        const pdfFile = document.getElementById('pdf-upload').files[0];
+
+        if (!numeroPedido || !idCliente || !dataEntrega) {
+            alert('Por favor, preencha todos os campos obrigatórios.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('numero_pedido', numeroPedido);
+        formData.append('idcliente', idCliente);
+        formData.append('data_entrega', dataEntrega);
+        if (pdfFile) {
+            formData.append('pdf', pdfFile);
+        }
+
+        const isNew = !pedidoId;
+        const url = isNew ? '/api/pedidos' : `/api/pedidos/${pedidoId}`;
+        const method = isNew ? 'POST' : 'PUT';
+
+        try {
+            const response = await fetch(url, {
+                method: method,
+                body: formData // Não defina Content-Type, o navegador faz isso por você com FormData
+            });
+
+            if (!response.ok) throw new Error(`Erro ao salvar o pedido.`);
+            
+            const result = await response.json();
+            alert(result.message);
+            $('#pedido-modal').modal('hide');
+            loadPedidos(); // Recarrega a tabela
+
+        } catch (error) {
+            console.error(error);
+            alert('Ocorreu um erro ao salvar o pedido.');
+        }
+    });
+
+    // Carregar dados iniciais
+    loadPedidos();
+});
+</script>
+{% endblock %}

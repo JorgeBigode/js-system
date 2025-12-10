@@ -6,8 +6,9 @@ import bcrypt as bcrypt_module
 import json              
 from datetime import datetime, timezone, timedelta
 from flask import (
-    Flask, request, render_template, redirect, url_for, session, make_response, Markup, jsonify, send_file, abort, current_app, flash
+    Flask, request, render_template, redirect, url_for, session, make_response, jsonify, send_file, abort, current_app, flash
 )
+from markupsafe import Markup
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import func, desc
@@ -19,13 +20,19 @@ from models import Base, User, RememberToken, get_engine, get_session
 import config
 
 # passlib handlers (passlib bcrypt + legacy handlers)
-from passlib.hash import bcrypt as passlib_bcrypt, phpass, md5_crypt
+from passlib.context import CryptContext
 from menu_content import get_user_html, is_admin
 from menu import menu_bp
 
 # optional: small debug prints at startup
-print("bcrypt (módulo) versão:", getattr(bcrypt_module, "__version__", "unknown"))
-print("passlib bcrypt exemplo:", passlib_bcrypt.hash("teste")[:60], "...")
+
+# Setup passlib context for multiple hash formats
+pwd_context = CryptContext(
+    schemes=["bcrypt", "phpass", "md5_crypt", "pbkdf2_sha256"],
+    deprecated="auto"
+)
+
+print("passlib bcrypt exemplo:", pwd_context.hash("teste")[:60], "...")
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = config.SECRET_KEY
@@ -36,6 +43,12 @@ app.register_blueprint(menu_bp)
 engine = get_engine()
 Base.metadata.create_all(engine)
 SessionLocal = scoped_session(sessionmaker(bind=engine))
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    """Garante que a sessão do banco de dados seja removida após cada requisição."""
+    SessionLocal.remove()
+
 
 # Logger (write simple debug + timings)
 def write_debug_log(entries: dict):
@@ -170,37 +183,11 @@ def login():
 
             if user:
                 stored_hash = (user.password or '').strip()
-                # Determine hash type and verify accordingly
-                if stored_hash.startswith(('$2y$', '$2b$', '$2a$')):
-                    # bcrypt (PHP-style and variants) - passlib bcrypt handles it
-                    try:
-                        valid = passlib_bcrypt.verify(password, stored_hash)
-                    except Exception:
-                        valid = False
-                elif stored_hash.startswith(('$P$', '$H$')):
-                    # phpass (WordPress / older PHP frameworks)
-                    try:
-                        valid = phpass.verify(password, stored_hash)
-                    except Exception:
-                        valid = False
-                elif stored_hash.startswith('$1$'):
-                    # md5-crypt
-                    try:
-                        valid = md5_crypt.verify(password, stored_hash)
-                    except Exception:
-                        valid = False
-                elif stored_hash.startswith('pbkdf2:'):
-                    # Werkzeug's generate_password_hash format (pbkdf2)
-                    try:
-                        valid = check_password_hash(stored_hash, password)
-                    except Exception:
-                        valid = False
-                else:
-                    # unknown format: try passlib bcrypt as fallback (safe)
-                    try:
-                        valid = passlib_bcrypt.verify(password, stored_hash)
-                    except Exception:
-                        valid = False
+                # Use passlib context to automatically verify any supported hash
+                try:
+                    valid = pwd_context.verify(password, stored_hash)
+                except Exception:
+                    valid = False
 
             if valid:
                 # Successful login -> set session & cookies
@@ -270,8 +257,8 @@ def install():
         if not username or not password:
             flash("Usuário e senha são obrigatórios.", "error")
         else:
-            # Use passlib bcrypt for created users (consistent)
-            hashed = passlib_bcrypt.hash(password)
+            # Use passlib context to hash new passwords (consistent)
+            hashed = pwd_context.hash(password)
             u = User(username=username, password=hashed, role=role)
             db.add(u)
             try:
@@ -303,11 +290,9 @@ def gestao_setores():
 
 @app.route('/inicio')
 def inicio():
-    conn = None
-    result = None
+    db = SessionLocal()
     try:
-        conn = engine.connect()
-        sql = """
+        sql = text("""
         SELECT c.idcliente,
                c.pedido,
                c.cliente AS nome_cliente,
@@ -323,10 +308,9 @@ def inicio():
         LEFT JOIN produto AS p ON ep.idproduto = p.idproduto
         WHERE cp.id_vinculo IS NOT NULL
         ORDER BY c.idcliente
-        """
-        result = conn.execute(text(sql))
-        # <-- Usa mappings() para receber list de dicts (compatível com diversas versões do SQLAlchemy)
-        rows = result.mappings().all()
+        """)
+        result = db.execute(sql)
+        rows = result.mappings().all() # SQLAlchemy 2.0+ style
 
         if not rows:
             return "Nenhum pedido encontrado."
@@ -345,24 +329,10 @@ def inicio():
             is_admin=is_admin()
         )
 
-
     except Exception as e:
         import traceback
         traceback.print_exc()
         return f"Erro ao carregar pedidos: {e}", 500
-
-    finally:
-        # fecha result e conexão com segurança
-        try:
-            if result is not None:
-                result.close()
-        except Exception:
-            pass
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
 
 @app.route('/pedido', methods=['GET', 'POST'])
 def pedido():
@@ -507,7 +477,7 @@ def create_user_cli():
     username = input("username: ").strip()
     password = input("password: ").strip()
     role = input("role [admin/viewer/editor/operador] (default admin): ").strip() or 'admin'
-    hashed = passlib_bcrypt.hash(password)
+    hashed = pwd_context.hash(password)
     u = User(username=username, password=hashed, role=role)
     db.add(u)
     try:

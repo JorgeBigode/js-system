@@ -32,8 +32,6 @@ pwd_context = CryptContext(
     deprecated="auto"
 )
 
-print("passlib bcrypt exemplo:", pwd_context.hash("teste")[:60], "...")
-
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = config.PERMANENT_SESSION_LIFETIME

@@ -2,6 +2,5 @@ Flask
 SQLAlchemy
 PyMySQL
 python-dotenv
-bcrypt
-passlib[bcrypt]
+passlib[bcrypt]==1.7.4
 gunicorn

@@ -9,7 +9,7 @@ from flask import (
     Flask, request, render_template, redirect, url_for, session, make_response, jsonify, send_file, abort, current_app, flash
 )
 from markupsafe import Markup
-from werkzeug.security import check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from sqlalchemy import func, desc
 from sqlalchemy.exc import IntegrityError
@@ -37,6 +37,9 @@ print("passlib bcrypt exemplo:", pwd_context.hash("teste")[:60], "...")
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = config.PERMANENT_SESSION_LIFETIME
+
+# Adiciona o middleware ProxyFix para corrigir cabeçalhos X-Forwarded-* em ambientes de produção (como Render)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.register_blueprint(menu_bp)
 
 # Database setup

@@ -113,6 +113,20 @@ def consume_remember_cookie(db, cookie_value):
         db.commit()
         return None
 
+def redirect_to_dashboard(role, sistema):
+    """Retorna a URL de destino com base no cargo e no sistema selecionado."""
+    if role == 'viewer':
+        return url_for('gestao_setores')
+    
+    if role in ('admin', 'editor', 'operador'):
+        if sistema == 'producao':
+            return url_for('inicio')
+        elif sistema == 'apontamento':
+            return url_for('apontamento_qr')
+            
+    # Fallback padrão para qualquer outro caso
+    return url_for('inicio')
+
 # -------------------------
 # Routes
 # -------------------------
@@ -131,16 +145,8 @@ def login():
     # If session active -> redirect by role/sistema
     if session.get('user_id') and session.get('username') and session.get('role'):
         role = session.get('role')
-        if role == 'viewer':
-            return redirect('/gestao_setores')
-        elif role in ('admin', 'editor', 'operador'):
-            if sistema_cookie == 'producao':
-                return redirect('/inicio')
-            elif sistema_cookie == 'apontamento':
-                return redirect('/apontamento_qr')
-            else:
-                # Fallback para caso o cookie não esteja definido ou seja inválido
-                return redirect('/inicio')
+        target_url = redirect_to_dashboard(role, sistema_cookie)
+        return redirect(target_url)
 
     # Auto-login via remember cookie
     if not session.get('user_id'):
@@ -153,10 +159,8 @@ def login():
                 session['user_id'] = user.id
                 session['username'] = user.username
                 session['role'] = user.role
-                resp = make_response(redirect(
-                    '/gestao_setores' if user.role == 'viewer' else
-                    ('/inicio' if request.cookies.get('sistema_selecionado') == 'producao' else '/apontamento_qr')
-                ))
+                target_url = redirect_to_dashboard(user.role, request.cookies.get('sistema_selecionado'))
+                resp = make_response(redirect(target_url))
                 resp.set_cookie(config.REMEMBER_COOKIE_NAME, new_cookie, expires=expires, httponly=True, samesite='Lax')
                 return resp
 
@@ -194,10 +198,8 @@ def login():
                 session['username'] = user.username
                 session['role'] = user.role
 
-                resp = make_response(redirect(
-                    '/gestao_setores' if user.role == 'viewer' else
-                    ('/inicio' if sistema_selecionado == 'producao' else '/apontamento_qr')
-                ))
+                target_url = redirect_to_dashboard(user.role, sistema_selecionado)
+                resp = make_response(redirect(target_url))
 
                 expires = datetime.now(timezone.utc) + timedelta(days=config.REMEMBER_COOKIE_DURATION_DAYS)
                 resp.set_cookie('sistema_selecionado', sistema_selecionado, expires=expires, path='/', httponly=False, samesite='Lax')

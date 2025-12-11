@@ -218,6 +218,14 @@ def login():
                 show_menu=False  # sinaliza ao template para não renderizar o menu
             )
 
+    # Default return for a GET request when no other conditions are met
+    return render_template(
+        'login.html',
+        username_cookie=username_cookie,
+        sistema_cookie=sistema_cookie,
+        show_menu=False
+    )
+
 @app.context_processor
 def inject_user_helpers():
     # user_html já é string; is_admin() -> bool

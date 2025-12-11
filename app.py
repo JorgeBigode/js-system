@@ -167,7 +167,7 @@ def login_page():
         show_menu=False
     )
 
-@app.route('/', methods=['POST'])
+@app.route('/', methods=['POST'], endpoint='login') # Explicitly set endpoint to 'login'
 def login_action():
     """Processa a tentativa de login do formulário."""
     db = SessionLocal()
@@ -184,10 +184,13 @@ def login_action():
 
         if not username_input:
             flash("Preencha seu usuário.", "error")
+            return render_template('login.html', username_cookie=username_cookie, sistema_cookie=sistema_cookie, show_menu=False)
         elif not password:
             flash("Preencha sua senha.", "error")
+            return render_template('login.html', username_cookie=username_cookie, sistema_cookie=sistema_cookie, show_menu=False)
         elif not sistema_selecionado:
             flash("Selecione um sistema.", "error")
+            return render_template('login.html', username_cookie=username_cookie, sistema_cookie=sistema_cookie, show_menu=False)
         else:
             # case-insensitive lookup using SQL func.lower
             user = db.query(User).filter(func.lower(User.username) == username_norm).first()

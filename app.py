@@ -113,35 +113,34 @@ def consume_remember_cookie(db, cookie_value):
         db.commit()
         return None
 
-def redirect_to_dashboard(role, sistema):
-    """Retorna a URL de destino com base no cargo e no sistema selecionado."""
-    if role == 'viewer':
-        return url_for('gestao_setores')
-    
-    if role in ('admin', 'editor', 'operador'):
-        if sistema == 'producao':
-            return url_for('inicio')
-        elif sistema == 'apontamento':
-            return url_for('apontamento_qr')
-            
-    # Fallback padrão para qualquer outro caso
-    return url_for('inicio')
-
 # -------------------------
 # Routes
 # -------------------------
-@app.route('/', methods=['GET'])
-def login_page():
-    """Exibe a página de login ou redireciona se o usuário já estiver logado."""
+@app.route('/', methods=['GET', 'POST'])
+def login():
     db = SessionLocal()
     username_cookie = request.cookies.get('username', '')
     sistema_cookie = request.cookies.get('sistema_selecionado', '')
 
+    # Install check
+    if 'bypass_install_check' not in request.args:
+        any_user = db.query(User).first()
+        if not any_user:
+            return redirect(url_for('install'))
+
     # If session active -> redirect by role/sistema
     if session.get('user_id') and session.get('username') and session.get('role'):
         role = session.get('role')
-        target_url = redirect_to_dashboard(role, sistema_cookie)
-        return redirect(target_url)
+        if role == 'viewer':
+            return redirect('/gestao_setores')
+        elif role in ('admin', 'editor', 'operador'):
+            if sistema_cookie == 'producao':
+                return redirect('/inicio')
+            elif sistema_cookie == 'apontamento':
+                return redirect('/apontamento_qr')
+            else:
+                # Fallback para caso o cookie não esteja definido ou seja inválido
+                return redirect('/inicio')
 
     # Auto-login via remember cookie
     if not session.get('user_id'):
@@ -154,25 +153,12 @@ def login_page():
                 session['user_id'] = user.id
                 session['username'] = user.username
                 session['role'] = user.role
-                target_url = redirect_to_dashboard(user.role, request.cookies.get('sistema_selecionado'))
-                resp = make_response(redirect(target_url))
+                resp = make_response(redirect(
+                    '/gestao_setores' if user.role == 'viewer' else
+                    ('/inicio' if request.cookies.get('sistema_selecionado') == 'producao' else '/apontamento_qr')
+                ))
                 resp.set_cookie(config.REMEMBER_COOKIE_NAME, new_cookie, expires=expires, httponly=True, samesite='Lax')
                 return resp
-    
-    # Se nenhuma sessão ou cookie válido existir, mostra a página de login
-    return render_template(
-        'login.html',
-        username_cookie=username_cookie,
-        sistema_cookie=sistema_cookie,
-        show_menu=False
-    )
-
-@app.route('/', methods=['POST'], endpoint='login') # Explicitly set endpoint to 'login'
-def login_action():
-    """Processa a tentativa de login do formulário."""
-    db = SessionLocal()
-    username_cookie = request.cookies.get('username', '')
-    sistema_cookie = request.cookies.get('sistema_selecionado', '')
 
     if request.method == 'POST':
         # Normalize username for search (case-insensitive)
@@ -184,25 +170,29 @@ def login_action():
 
         if not username_input:
             flash("Preencha seu usuário.", "error")
-            return render_template('login.html', username_cookie=username_cookie, sistema_cookie=sistema_cookie, show_menu=False)
         elif not password:
             flash("Preencha sua senha.", "error")
-            return render_template('login.html', username_cookie=username_cookie, sistema_cookie=sistema_cookie, show_menu=False)
         elif not sistema_selecionado:
             flash("Selecione um sistema.", "error")
-            return render_template('login.html', username_cookie=username_cookie, sistema_cookie=sistema_cookie, show_menu=False)
         else:
             # case-insensitive lookup using SQL func.lower
             user = db.query(User).filter(func.lower(User.username) == username_norm).first()
             valid = False
 
-            if user:
+            if not user:
+                # Adiciona log para usuário não encontrado
+                current_app.logger.warning(f"Tentativa de login falhou: usuário '{username_input}' não encontrado.")
+            else:
                 stored_hash = (user.password or '').strip()
                 # Use passlib context to automatically verify any supported hash
                 try:
                     valid = pwd_context.verify(password, stored_hash)
-                except Exception:
+                    if not valid:
+                        # Adiciona log para senha incorreta
+                        current_app.logger.warning(f"Tentativa de login falhou: senha incorreta para o usuário '{username_input}'.")
+                except Exception as e:
                     valid = False
+                    current_app.logger.error(f"Erro durante a verificação de senha para '{username_input}': {e}")
 
             if valid:
                 # Successful login -> set session & cookies
@@ -211,8 +201,10 @@ def login_action():
                 session['username'] = user.username
                 session['role'] = user.role
 
-                target_url = redirect_to_dashboard(user.role, sistema_selecionado)
-                resp = make_response(redirect(target_url))
+                resp = make_response(redirect(
+                    '/gestao_setores' if user.role == 'viewer' else
+                    ('/inicio' if sistema_selecionado == 'producao' else '/apontamento_qr')
+                ))
 
                 expires = datetime.now(timezone.utc) + timedelta(days=config.REMEMBER_COOKIE_DURATION_DAYS)
                 resp.set_cookie('sistema_selecionado', sistema_selecionado, expires=expires, path='/', httponly=False, samesite='Lax')

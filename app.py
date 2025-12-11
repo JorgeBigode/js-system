@@ -32,6 +32,8 @@ pwd_context = CryptContext(
     deprecated="auto"
 )
 
+print("passlib bcrypt exemplo:", pwd_context.hash("teste")[:60], "...")
+
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = config.PERMANENT_SESSION_LIFETIME
@@ -179,20 +181,13 @@ def login():
             user = db.query(User).filter(func.lower(User.username) == username_norm).first()
             valid = False
 
-            if not user:
-                # Adiciona log para usuário não encontrado
-                current_app.logger.warning(f"Tentativa de login falhou: usuário '{username_input}' não encontrado.")
-            else:
+            if user:
                 stored_hash = (user.password or '').strip()
                 # Use passlib context to automatically verify any supported hash
                 try:
                     valid = pwd_context.verify(password, stored_hash)
-                    if not valid:
-                        # Adiciona log para senha incorreta
-                        current_app.logger.warning(f"Tentativa de login falhou: senha incorreta para o usuário '{username_input}'.")
-                except Exception as e:
+                except Exception:
                     valid = False
-                    current_app.logger.error(f"Erro durante a verificação de senha para '{username_input}': {e}")
 
             if valid:
                 # Successful login -> set session & cookies
@@ -224,6 +219,14 @@ def login():
                 sistema_cookie=sistema_cookie,
                 show_menu=False  # sinaliza ao template para não renderizar o menu
             )
+
+    # Default return for a GET request when no other conditions are met
+    return render_template(
+        'login.html',
+        username_cookie=username_cookie,
+        sistema_cookie=sistema_cookie,
+        show_menu=False
+    )
 
 @app.context_processor
 def inject_user_helpers():

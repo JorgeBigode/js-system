@@ -130,17 +130,12 @@ def redirect_to_dashboard(role, sistema):
 # -------------------------
 # Routes
 # -------------------------
-@app.route('/', methods=['GET', 'POST'])
-def login():
+@app.route('/', methods=['GET'])
+def login_page():
+    """Exibe a página de login ou redireciona se o usuário já estiver logado."""
     db = SessionLocal()
     username_cookie = request.cookies.get('username', '')
     sistema_cookie = request.cookies.get('sistema_selecionado', '')
-
-    # Install check
-    if 'bypass_install_check' not in request.args:
-        any_user = db.query(User).first()
-        if not any_user:
-            return redirect(url_for('install'))
 
     # If session active -> redirect by role/sistema
     if session.get('user_id') and session.get('username') and session.get('role'):
@@ -163,6 +158,21 @@ def login():
                 resp = make_response(redirect(target_url))
                 resp.set_cookie(config.REMEMBER_COOKIE_NAME, new_cookie, expires=expires, httponly=True, samesite='Lax')
                 return resp
+    
+    # Se nenhuma sessão ou cookie válido existir, mostra a página de login
+    return render_template(
+        'login.html',
+        username_cookie=username_cookie,
+        sistema_cookie=sistema_cookie,
+        show_menu=False
+    )
+
+@app.route('/', methods=['POST'])
+def login_action():
+    """Processa a tentativa de login do formulário."""
+    db = SessionLocal()
+    username_cookie = request.cookies.get('username', '')
+    sistema_cookie = request.cookies.get('sistema_selecionado', '')
 
     if request.method == 'POST':
         # Normalize username for search (case-insensitive)
@@ -219,14 +229,6 @@ def login():
                 sistema_cookie=sistema_cookie,
                 show_menu=False  # sinaliza ao template para não renderizar o menu
             )
-
-    # Default return for a GET request when no other conditions are met
-    return render_template(
-        'login.html',
-        username_cookie=username_cookie,
-        sistema_cookie=sistema_cookie,
-        show_menu=False
-    )
 
 @app.context_processor
 def inject_user_helpers():

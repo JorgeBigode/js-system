@@ -2,7 +2,6 @@
 import os
 import secrets
 import hashlib
-import bcrypt as bcrypt_module  
 import json              
 from datetime import datetime, timezone, timedelta
 from flask import (

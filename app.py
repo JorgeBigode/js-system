@@ -53,20 +53,43 @@ app.debug = (os.getenv("RENDER", "0") == "1") or (os.getenv("FLASK_DEBUG", "0") 
 if app.debug:
     logger.warning("Flask debug mode is ENABLED (app.debug=True)")
 
-# ProxyFix: configurable via env vars (useful para diferentes plataformas)
+# -------------------------
+# Cookie policy (dev vs prod)
+# -------------------------
+# You can override with env: FORCE_COOKIE_SECURE=0/1
+force_cookie_secure = os.getenv("FORCE_COOKIE_SECURE", None)
+if force_cookie_secure is not None:
+    cookie_secure = bool(int(force_cookie_secure))
+else:
+    # in debug (local) avoid secure=True to make testing easy
+    cookie_secure = not app.debug
+
+# samesite: in production with secure cookies and cross-site usage, use 'None'
+cookie_samesite = 'None' if cookie_secure else 'Lax'
+
+# apply to Flask session cookie
+app.config.update(
+    SESSION_COOKIE_SECURE=cookie_secure,
+    SESSION_COOKIE_SAMESITE=cookie_samesite,
+    SESSION_COOKIE_HTTPONLY=True
+)
+
+logger.info("Cookie policy: secure=%s, samesite=%s, session_cookie_httpOnly=%s",
+            app.config['SESSION_COOKIE_SECURE'],
+            app.config['SESSION_COOKIE_SAMESITE'],
+            app.config['SESSION_COOKIE_HTTPONLY'])
+
+# ProxyFix: configurable via env vars (use only x_for and x_proto by default)
 try:
     proxy_x_for = int(os.getenv('PROXY_X_FOR', '1'))
     proxy_x_proto = int(os.getenv('PROXY_X_PROTO', '1'))
-    proxy_x_host = int(os.getenv('PROXY_X_HOST', '1'))
-    proxy_x_prefix = int(os.getenv('PROXY_X_PREFIX', '1'))
 except Exception:
-    proxy_x_for, proxy_x_proto, proxy_x_host, proxy_x_prefix = 1, 1, 1, 1
+    proxy_x_for, proxy_x_proto = 1, 1
 
+# Use only x_for and x_proto (x_host and x_prefix often break detection)
 app.wsgi_app = ProxyFix(app.wsgi_app,
                         x_for=proxy_x_for,
-                        x_proto=proxy_x_proto,
-                        x_host=proxy_x_host,
-                        x_prefix=proxy_x_prefix)
+                        x_proto=proxy_x_proto)
 
 app.register_blueprint(menu_bp)
 
@@ -151,6 +174,18 @@ def consume_remember_cookie(db, cookie_value):
         db.commit()
         return None
 
+# small helper to set cookies with consistent attributes
+def set_app_cookie(resp, key, value, expires=None, httponly=False, path='/'):
+    resp.set_cookie(
+        key,
+        value,
+        expires=expires,
+        path=path,
+        httponly=httponly,
+        samesite=app.config['SESSION_COOKIE_SAMESITE'],
+        secure=app.config['SESSION_COOKIE_SECURE']
+    )
+
 # -------------------------
 # Routes
 # -------------------------
@@ -196,16 +231,8 @@ def login():
                         '/gestao_setores' if user.role == 'viewer' else
                         ('/inicio' if request.cookies.get('sistema_selecionado') == 'producao' else '/apontamento_qr')
                     ))
-                    # remember cookie: samesite=None + secure=True (necessário em HTTPS)
-                    resp.set_cookie(
-                        config.REMEMBER_COOKIE_NAME,
-                        new_cookie,
-                        expires=expires,
-                        httponly=True,
-                        samesite='None',
-                        secure=True,
-                        path='/'
-                    )
+                    # remember cookie (consistent policy)
+                    set_app_cookie(resp, config.REMEMBER_COOKIE_NAME, new_cookie, expires=expires, httponly=True, path='/')
                     return resp
             except Exception:
                 logger.exception("Erro ao consumir remember cookie")
@@ -214,6 +241,7 @@ def login():
         # Log inicial do POST
         logger.debug("=== POST / LOGIN ===")
         logger.debug("Form recebido: %s", dict(request.form))
+        logger.debug("Cookies na requisição: %s", dict(request.cookies))
 
         try:
             # Normalize username for search (case-insensitive)
@@ -241,10 +269,12 @@ def login():
 
                 if user:
                     stored_hash = (user.password or '').strip()
+                    logger.debug("stored_hash preview: %s", (stored_hash[:30] + '...') if stored_hash else '<empty>')
                     # Use passlib context to automatically verify any supported hash
                     try:
                         valid = pwd_context.verify(password, stored_hash)
                     except Exception as e:
+                        # If hash is unknown, log it clearly
                         logger.exception("Erro ao verificar senha: %s", e)
                         valid = False
 
@@ -264,39 +294,16 @@ def login():
 
                     expires = datetime.now(timezone.utc) + timedelta(days=config.REMEMBER_COOKIE_DURATION_DAYS)
 
-                    # IMPORTANT: cookies set for HTTPS environment (Render)
-                    resp.set_cookie(
-                        'sistema_selecionado',
-                        sistema_selecionado,
-                        expires=expires,
-                        path='/',
-                        httponly=False,
-                        samesite='None',
-                        secure=True
-                    )
-                    resp.set_cookie(
-                        'username',
-                        user.username,
-                        expires=expires,
-                        path='/',
-                        httponly=False,
-                        samesite='None',
-                        secure=True
-                    )
+                    # set cookies using consistent helper so policy is uniform
+                    set_app_cookie(resp, 'sistema_selecionado', sistema_selecionado, expires=expires, httponly=False, path='/')
+                    set_app_cookie(resp, 'username', user.username, expires=expires, httponly=False, path='/')
 
                     if lembrar:
                         cookie_val, token_expires = create_remember_token(db, user.id, days=config.REMEMBER_COOKIE_DURATION_DAYS)
-                        resp.set_cookie(
-                            config.REMEMBER_COOKIE_NAME,
-                            cookie_val,
-                            expires=token_expires,
-                            httponly=True,
-                            samesite='None',
-                            secure=True,
-                            path='/'
-                        )
+                        set_app_cookie(resp, config.REMEMBER_COOKIE_NAME, cookie_val, expires=token_expires, httponly=True, path='/')
 
                     logger.info("Login bem-sucedido para: %s (id=%s)", user.username, user.id)
+                    logger.debug("Cookies definidos neste response? secure=%s samesite=%s", app.config['SESSION_COOKIE_SECURE'], app.config['SESSION_COOKIE_SAMESITE'])
                     return resp
                 else:
                     logger.info("Falha no login para usuário: %s", username_input)
@@ -542,7 +549,7 @@ def logout():
     session.clear()
     resp = make_response(redirect(url_for('login')))
     # limpar cookie de remember com os mesmos atributos
-    resp.set_cookie(config.REMEMBER_COOKIE_NAME, '', expires=0, path='/', samesite='None', secure=True)
+    set_app_cookie(resp, config.REMEMBER_COOKIE_NAME, '', expires=0, httponly=True, path='/')
     return resp
 
 def create_user_cli():

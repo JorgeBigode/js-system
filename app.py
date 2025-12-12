@@ -2,18 +2,22 @@
 import os
 import secrets
 import hashlib
-import json              
+import json
+import traceback
 from datetime import datetime, timezone, timedelta
+import logging
+
 from flask import (
-    Flask, request, render_template, redirect, url_for, session, make_response, jsonify, send_file, abort, current_app, flash
+    Flask, request, render_template, redirect, url_for, session, make_response,
+    jsonify, send_file, abort, current_app, flash
 )
 from markupsafe import Markup
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
-from sqlalchemy import text
+
 # models & config
 from models import Base, User, RememberToken, get_engine, get_session
 import config
@@ -23,8 +27,6 @@ from passlib.context import CryptContext
 from menu_content import get_user_html, is_admin
 from menu import menu_bp
 
-# optional: small debug prints at startup
-
 # Setup passlib context for multiple hash formats
 pwd_context = CryptContext(
     schemes=["bcrypt", "phpass", "md5_crypt", "pbkdf2_sha256"],
@@ -33,12 +35,39 @@ pwd_context = CryptContext(
 
 print("passlib bcrypt exemplo:", pwd_context.hash("teste")[:60], "...")
 
+# -------------------------
+# Flask app + logging
+# -------------------------
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = config.PERMANENT_SESSION_LIFETIME
 
-# Adiciona o middleware ProxyFix para corrigir cabeçalhos X-Forwarded-* em ambientes de produção (como Render)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+# Logging to stdout (Render captures stdout/stderr)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG")
+logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.DEBUG),
+                    format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+logger = logging.getLogger(__name__)
+
+# Enable debug if running on Render or if FLASK_DEBUG is set
+app.debug = (os.getenv("RENDER", "0") == "1") or (os.getenv("FLASK_DEBUG", "0") == "1")
+if app.debug:
+    logger.warning("Flask debug mode is ENABLED (app.debug=True)")
+
+# ProxyFix: configurable via env vars (useful para diferentes plataformas)
+try:
+    proxy_x_for = int(os.getenv('PROXY_X_FOR', '1'))
+    proxy_x_proto = int(os.getenv('PROXY_X_PROTO', '1'))
+    proxy_x_host = int(os.getenv('PROXY_X_HOST', '1'))
+    proxy_x_prefix = int(os.getenv('PROXY_X_PREFIX', '1'))
+except Exception:
+    proxy_x_for, proxy_x_proto, proxy_x_host, proxy_x_prefix = 1, 1, 1, 1
+
+app.wsgi_app = ProxyFix(app.wsgi_app,
+                        x_for=proxy_x_for,
+                        x_proto=proxy_x_proto,
+                        x_host=proxy_x_host,
+                        x_prefix=proxy_x_prefix)
+
 app.register_blueprint(menu_bp)
 
 # Database setup
@@ -51,14 +80,17 @@ def shutdown_session(exception=None):
     """Garante que a sessão do banco de dados seja removida após cada requisição."""
     SessionLocal.remove()
 
-
-# Logger (write simple debug + timings)
+# Logger (write simple debug + timings) - mantém seu arquivo de log local também
 def write_debug_log(entries: dict):
-    with open(config.LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write(datetime.now(timezone.utc).strftime('[%Y-%m-%d %H:%M:%S] '))
-        for k, v in entries.items():
-            f.write(f"{k}: {v}\n")
-        f.write("\n")
+    try:
+        with open(config.LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(datetime.now(timezone.utc).strftime('[%Y-%m-%d %H:%M:%S] '))
+            for k, v in entries.items():
+                f.write(f"{k}: {v}\n")
+            f.write("\n")
+    except Exception as e:
+        # se não der para escrever no arquivo, garantir que algo seja logado no stdout
+        logger.exception("Falha ao escrever em config.LOG_FILE: %s", e)
 
 @app.before_request
 def before_request_logging():
@@ -69,7 +101,9 @@ def before_request_logging():
         "SERVER_NAME": request.host,
         "SCRIPT_NAME": request.path
     }
+    # escreve no arquivo local (se houver) e no stdout
     write_debug_log(entries)
+    logger.debug("Request: %s %s", request.method, request.path)
 
 # -------------------------
 # Helpers: remember-me token
@@ -150,77 +184,134 @@ def login():
     if not session.get('user_id'):
         remember_cookie = request.cookies.get(config.REMEMBER_COOKIE_NAME)
         if remember_cookie:
-            result = consume_remember_cookie(db, remember_cookie)
-            if result:
-                user, new_cookie, expires = result
-                session.permanent = True
-                session['user_id'] = user.id
-                session['username'] = user.username
-                session['role'] = user.role
-                resp = make_response(redirect(
-                    '/gestao_setores' if user.role == 'viewer' else
-                    ('/inicio' if request.cookies.get('sistema_selecionado') == 'producao' else '/apontamento_qr')
-                ))
-                resp.set_cookie(config.REMEMBER_COOKIE_NAME, new_cookie, expires=expires, httponly=True, samesite='Lax')
-                return resp
+            try:
+                result = consume_remember_cookie(db, remember_cookie)
+                if result:
+                    user, new_cookie, expires = result
+                    session.permanent = True
+                    session['user_id'] = user.id
+                    session['username'] = user.username
+                    session['role'] = user.role
+                    resp = make_response(redirect(
+                        '/gestao_setores' if user.role == 'viewer' else
+                        ('/inicio' if request.cookies.get('sistema_selecionado') == 'producao' else '/apontamento_qr')
+                    ))
+                    # remember cookie: samesite=None + secure=True (necessário em HTTPS)
+                    resp.set_cookie(
+                        config.REMEMBER_COOKIE_NAME,
+                        new_cookie,
+                        expires=expires,
+                        httponly=True,
+                        samesite='None',
+                        secure=True,
+                        path='/'
+                    )
+                    return resp
+            except Exception:
+                logger.exception("Erro ao consumir remember cookie")
 
     if request.method == 'POST':
-        # Normalize username for search (case-insensitive)
-        username_input = request.form.get('usuario', '').strip()
-        username_norm = username_input.lower()
-        password = request.form.get('senha', '').strip()
-        sistema_selecionado = request.form.get('sistema_selecionado', '').strip()
-        lembrar = request.form.get('lembrar')
+        # Log inicial do POST
+        logger.debug("=== POST / LOGIN ===")
+        logger.debug("Form recebido: %s", dict(request.form))
 
-        if not username_input:
-            flash("Preencha seu usuário.", "error")
-        elif not password:
-            flash("Preencha sua senha.", "error")
-        elif not sistema_selecionado:
-            flash("Selecione um sistema.", "error")
-        else:
-            # case-insensitive lookup using SQL func.lower
-            user = db.query(User).filter(func.lower(User.username) == username_norm).first()
-            valid = False
+        try:
+            # Normalize username for search (case-insensitive)
+            username_input = request.form.get('usuario', '').strip()
+            username_norm = username_input.lower()
+            password = request.form.get('senha', '').strip()
+            sistema_selecionado = request.form.get('sistema_selecionado', '').strip()
+            lembrar = request.form.get('lembrar')
 
-            if user:
-                stored_hash = (user.password or '').strip()
-                # Use passlib context to automatically verify any supported hash
-                try:
-                    valid = pwd_context.verify(password, stored_hash)
-                except Exception:
-                    valid = False
+            logger.debug("Usuário digitado: %s | Sistema selecionado: %s | Lembrar: %s",
+                         username_input, sistema_selecionado, lembrar)
 
-            if valid:
-                # Successful login -> set session & cookies
-                session.permanent = True
-                session['user_id'] = user.id
-                session['username'] = user.username
-                session['role'] = user.role
-
-                resp = make_response(redirect(
-                    '/gestao_setores' if user.role == 'viewer' else
-                    ('/inicio' if sistema_selecionado == 'producao' else '/apontamento_qr')
-                ))
-
-                expires = datetime.now(timezone.utc) + timedelta(days=config.REMEMBER_COOKIE_DURATION_DAYS)
-                resp.set_cookie('sistema_selecionado', sistema_selecionado, expires=expires, path='/', httponly=False, samesite='Lax')
-                resp.set_cookie('username', user.username, expires=expires, path='/', httponly=False, samesite='Lax')
-
-                if lembrar:
-                    cookie_val, token_expires = create_remember_token(db, user.id, days=config.REMEMBER_COOKIE_DURATION_DAYS)
-                    resp.set_cookie(config.REMEMBER_COOKIE_NAME, cookie_val, expires=token_expires, httponly=True, samesite='Lax')
-
-                return resp
+            if not username_input:
+                flash("Preencha seu usuário.", "error")
+            elif not password:
+                flash("Preencha sua senha.", "error")
+            elif not sistema_selecionado:
+                flash("Selecione um sistema.", "error")
             else:
-                flash("Usuário não encontrado ou senha inválida.", "error")
+                # case-insensitive lookup using SQL func.lower
+                user = db.query(User).filter(func.lower(User.username) == username_norm).first()
+                valid = False
 
-                return render_template(
-                'login.html',
-                username_cookie=username_cookie,
-                sistema_cookie=sistema_cookie,
-                show_menu=False  # sinaliza ao template para não renderizar o menu
-            )
+                logger.debug("Usuario encontrado: %s", getattr(user, 'id', None))
+
+                if user:
+                    stored_hash = (user.password or '').strip()
+                    # Use passlib context to automatically verify any supported hash
+                    try:
+                        valid = pwd_context.verify(password, stored_hash)
+                    except Exception as e:
+                        logger.exception("Erro ao verificar senha: %s", e)
+                        valid = False
+
+                logger.debug("Senha válida?: %s", valid)
+
+                if valid:
+                    # Successful login -> set session & cookies
+                    session.permanent = True
+                    session['user_id'] = user.id
+                    session['username'] = user.username
+                    session['role'] = user.role
+
+                    resp = make_response(redirect(
+                        '/gestao_setores' if user.role == 'viewer' else
+                        ('/inicio' if sistema_selecionado == 'producao' else '/apontamento_qr')
+                    ))
+
+                    expires = datetime.now(timezone.utc) + timedelta(days=config.REMEMBER_COOKIE_DURATION_DAYS)
+
+                    # IMPORTANT: cookies set for HTTPS environment (Render)
+                    resp.set_cookie(
+                        'sistema_selecionado',
+                        sistema_selecionado,
+                        expires=expires,
+                        path='/',
+                        httponly=False,
+                        samesite='None',
+                        secure=True
+                    )
+                    resp.set_cookie(
+                        'username',
+                        user.username,
+                        expires=expires,
+                        path='/',
+                        httponly=False,
+                        samesite='None',
+                        secure=True
+                    )
+
+                    if lembrar:
+                        cookie_val, token_expires = create_remember_token(db, user.id, days=config.REMEMBER_COOKIE_DURATION_DAYS)
+                        resp.set_cookie(
+                            config.REMEMBER_COOKIE_NAME,
+                            cookie_val,
+                            expires=token_expires,
+                            httponly=True,
+                            samesite='None',
+                            secure=True,
+                            path='/'
+                        )
+
+                    logger.info("Login bem-sucedido para: %s (id=%s)", user.username, user.id)
+                    return resp
+                else:
+                    logger.info("Falha no login para usuário: %s", username_input)
+                    flash("Usuário não encontrado ou senha inválida.", "error")
+
+                    return render_template(
+                        'login.html',
+                        username_cookie=username_cookie,
+                        sistema_cookie=sistema_cookie,
+                        show_menu=False  # sinaliza ao template para não renderizar o menu
+                    )
+        except Exception as e:
+            logger.exception("ERRO GERAL NO LOGIN: %s", e)
+            traceback.print_exc()
+            return f"Erro interno no login: {e}", 500
 
     # Default return for a GET request when no other conditions are met
     return render_template(
@@ -229,13 +320,6 @@ def login():
         sistema_cookie=sistema_cookie,
         show_menu=False
     )
-
-@app.context_processor
-def inject_user_helpers():
-    # user_html já é string; is_admin() -> bool
-    # define show_menu True por padrão (templates podem sobrescrever)
-    return dict(user_html=get_user_html(), is_admin=is_admin(), show_menu=True)
-
 
 def is_admin():
     """Retorna True se o usuário da sessão for admin."""
@@ -252,6 +336,12 @@ def get_user_html():
         return ""
     # use Markup para evitar auto-escape caso queira HTML. No template, preferir {{ user_html|safe }}
     return Markup(f"<div class='user-info'>Usuário: <strong>{username}</strong> — <small>{role}</small></div>")
+
+@app.context_processor
+def inject_user_helpers():
+    # user_html já é string; is_admin() -> bool
+    # define show_menu True por padrão (templates podem sobrescrever)
+    return dict(user_html=get_user_html(), is_admin=is_admin(), show_menu=True)
 
 @app.route('/install', methods=['GET', 'POST'])
 def install():
@@ -340,7 +430,7 @@ def inicio():
         )
 
     except Exception as e:
-        import traceback
+        logger.exception("Erro ao carregar pedidos: %s", e)
         traceback.print_exc()
         return f"Erro ao carregar pedidos: {e}", 500
 
@@ -361,9 +451,6 @@ def pedido():
         pedido_id_to_delete = request.args.get('delete')
         if pedido_id_to_delete:
             try:
-                # Usando SQL puro para deletar da tabela 'cliente' que parece conter os pedidos
-                # ATENÇÃO: Verifique se o nome da tabela e a coluna de ID estão corretos.
-                # Assumindo que 'cliente' é a tabela e 'idcliente' é a chave primária.
                 db.execute(text("DELETE FROM cliente WHERE idcliente = :id"), {'id': pedido_id_to_delete})
                 db.commit()
                 flash(f"Pedido {pedido_id_to_delete} excluído com sucesso.", "success")
@@ -377,32 +464,10 @@ def pedido():
         # Edição de Pedido
         if 'submit_edit' in request.form:
             pedido_id = request.form.get('pedido_id')
-            # Lógica para atualizar o pedido no banco de dados.
-            # Esta parte precisa ser implementada com base na sua estrutura de DB.
-            # Exemplo:
-            # pedido_obj = db.execute(text("SELECT * FROM cliente WHERE idcliente = :id"), {'id': pedido_id}).first()
-            # if pedido_obj:
-            #     db.execute(text("""
-            #         UPDATE cliente SET pedido = :num, cliente = :nome, endereco = :local, data_entrega = :data 
-            #         WHERE idcliente = :id
-            #     """), {
-            #         'num': request.form.get('edit_pedido'),
-            #         'nome': request.form.get('edit_cliente'),
-            #         'local': request.form.get('edit_local'),
-            #         'data': request.form.get('edit_data_entrega'),
-            #         'id': pedido_id
-            #     })
-            #     db.commit()
-            #     flash("Pedido atualizado com sucesso.", "success")
             flash("Funcionalidade de edição ainda não implementada no backend.", "info")
-
         # Criação de Novo Pedido
         else:
             try:
-                # ATENÇÃO: Assumindo que a tabela 'cliente' armazena os pedidos.
-                # O nome da tabela e das colunas deve ser verificado.
-                # O campo 'client_id' do formulário parece ser o 'id_vinculo_cliente'
-                # que relaciona o cliente ao seu endereço.
                 sql = text("""
                     INSERT INTO cliente (pedido, id_vinculo_cliente, data_entrega) 
                     VALUES (:pedido, :client_id, :data_entrega)
@@ -422,9 +487,6 @@ def pedido():
 
     # Lógica para carregar dados para a página (GET)
     try:
-        # Carregar lista de pedidos
-        # Esta query junta as tabelas para obter os detalhes do pedido.
-        # Verifique os nomes das tabelas e colunas.
         pedidos_sql = text("""
             SELECT 
                 c.idcliente, 
@@ -439,7 +501,6 @@ def pedido():
         """)
         pedidos_result = db.execute(pedidos_sql).mappings().all()
 
-        # Carregar clientes para os modais
         clientes_sql = text("SELECT id, nome_cliente, endereco FROM vinculo_cliente ORDER BY nome_cliente, endereco")
         clientes_result = db.execute(clientes_sql).mappings().all()
         
@@ -453,6 +514,7 @@ def pedido():
         clientes_json = json.dumps(clientes_agrupados)
 
     except Exception as e:
+        logger.exception("Erro ao carregar dados da página: %s", e)
         flash(f"Erro ao carregar dados da página: {e}", "error")
         pedidos_result = []
         clientes_json = "{}"
@@ -479,7 +541,8 @@ def logout():
         db.commit()
     session.clear()
     resp = make_response(redirect(url_for('login')))
-    resp.set_cookie(config.REMEMBER_COOKIE_NAME, '', expires=0)
+    # limpar cookie de remember com os mesmos atributos
+    resp.set_cookie(config.REMEMBER_COOKIE_NAME, '', expires=0, path='/', samesite='None', secure=True)
     return resp
 
 def create_user_cli():
@@ -497,9 +560,16 @@ def create_user_cli():
         db.rollback()
         print("Erro: usuário já existe.")
 
+# Global exception handler (opcional, registra e mostra 500)
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.exception("Unhandled exception: %s", e)
+    traceback.print_exc()
+    return "Erro interno no servidor.", 500
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == '--create-user':
         create_user_cli()
         sys.exit(0)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=app.debug, host='0.0.0.0', port=int(os.getenv('PORT', 5000)))

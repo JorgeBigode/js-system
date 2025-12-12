@@ -218,6 +218,7 @@ def login():
         try:
             # Normalize username for search (case-insensitive)
             username_input = request.form.get('username', '').strip()
+            username_norm = username_input.lower()
             password = request.form.get('password', '').strip()
             sistema_selecionado = request.form.get('sistema_selecionado', '').strip()
             lembrar = request.form.get('lembrar')

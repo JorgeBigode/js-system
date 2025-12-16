@@ -398,50 +398,54 @@ def gestao_setores():
 @app.route('/inicio')
 def inicio():
     # Proteção de rota: se não estiver logado, redireciona para o login
-    user_id = session.get('user_id')
-    if not user_id:
+    if not session.get('user_id'):
         return redirect(url_for('login'))
 
     db = SessionLocal()
     try:
         # Busca o objeto do usuário para passar ao template
-        user = db.query(User).filter_by(id=user_id).first()
-
-        # A lógica para buscar os pedidos permanece a mesma
-        sql = text("""
-        SELECT c.idcliente,
-               c.pedido,
-               c.cliente AS nome_cliente,
-               c.endereco,
-               cp.id_vinculo,
-               cp.status_producao,
-               e.equipamento_pai,
-               p.conjunto
-        FROM cliente AS c
-        LEFT JOIN cliente_produto AS cp ON c.idcliente = cp.id_cliente
-        LEFT JOIN equipamento_produto AS ep ON cp.id_equipamento_produto = ep.id_equipamento_produto
-        LEFT JOIN equipamento AS e ON ep.idequipamento = e.idequipamento
-        LEFT JOIN produto AS p ON ep.idproduto = p.idproduto
-        WHERE cp.id_vinculo IS NOT NULL
-        ORDER BY c.idcliente
-        """)
-        result = db.execute(sql)
-        rows = result.mappings().all()
-        pedidos = {}
-        for r in rows:
-            key = r.get('id_vinculo')
-            pedidos.setdefault(key, []).append(r)
+        user = db.query(User).filter_by(id=session.get('user_id')).first()
 
         # renderiza o template (seu template Jinja pode usar item.pedido ou item['pedido'])
         return render_template(
             "index.html",
-            pedidos=pedidos,
             user=user  # Passa o objeto de usuário para o template
         )
     except Exception as e:
         logger.exception("Erro ao carregar pedidos: %s", e)
         traceback.print_exc()
         return f"Erro ao carregar pedidos: {e}", 500
+
+@app.route('/api/slide-data')
+def api_slide_data():
+    """Endpoint da API para fornecer dados para o dashboard."""
+    if not session.get('user_id'):
+        return jsonify({"error": "Não autorizado"}), 401
+
+    db = SessionLocal()
+    try:
+        sql = text("""
+        SELECT
+            c.cliente AS nome_cliente,
+            cp.status_producao,
+            e.equipamento_pai,
+            p.conjunto
+        FROM cliente AS c
+        LEFT JOIN cliente_produto AS cp ON c.idcliente = cp.id_cliente
+        LEFT JOIN equipamento_produto AS ep ON cp.id_equipamento_produto = ep.id_equipamento_produto
+        LEFT JOIN equipamento AS e ON ep.idequipamento = e.idequipamento
+        LEFT JOIN produto AS p ON ep.idproduto = p.idproduto
+        WHERE cp.status_producao IS NOT NULL 
+          AND cp.status_producao != ''
+          AND cp.status_producao != 'Finalizado'
+        ORDER BY c.idcliente
+        """)
+        result = db.execute(sql).mappings().all()
+        # O jsonify converte a lista de dicionários para uma resposta JSON
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("Erro na API /api/slide-data: %s", e)
+        return jsonify({"error": "Erro interno ao buscar dados"}), 500
 
 @app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
 def pedido():

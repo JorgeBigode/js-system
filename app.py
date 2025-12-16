@@ -443,7 +443,7 @@ def inicio():
         traceback.print_exc()
         return f"Erro ao carregar pedidos: {e}", 500
 
-@app.route('/pedido', methods=['GET', 'POST'])
+@app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
 def pedido():
     db = SessionLocal()
     
@@ -529,7 +529,7 @@ def pedido():
         clientes_json = "{}"
 
     return render_template(
-        'pedido.html',
+        'pedidos.html',
         pedidos=pedidos_result,
         clientes_json=Markup(clientes_json),
         is_admin=is_admin()

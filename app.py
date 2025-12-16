@@ -397,8 +397,17 @@ def gestao_setores():
 
 @app.route('/inicio')
 def inicio():
+    # Proteção de rota: se não estiver logado, redireciona para o login
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
     db = SessionLocal()
     try:
+        # Busca o objeto do usuário para passar ao template
+        user = db.query(User).filter_by(id=user_id).first()
+
+        # A lógica para buscar os pedidos permanece a mesma
         sql = text("""
         SELECT c.idcliente,
                c.pedido,
@@ -427,8 +436,7 @@ def inicio():
         return render_template(
             "index.html",
             pedidos=pedidos,
-            user_html=get_user_html(),
-            is_admin=is_admin()
+            user=user  # Passa o objeto de usuário para o template
         )
     except Exception as e:
         logger.exception("Erro ao carregar pedidos: %s", e)

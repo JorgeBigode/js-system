@@ -417,12 +417,7 @@ def inicio():
         ORDER BY c.idcliente
         """)
         result = db.execute(sql)
-        rows = result.mappings().all() # SQLAlchemy 2.0+ style
-
-        if not rows:
-            return "Nenhum pedido encontrado."
-
-        # agrupa por id_vinculo (mesma estrutura que o PHP)
+        rows = result.mappings().all()
         pedidos = {}
         for r in rows:
             key = r.get('id_vinculo')
@@ -430,12 +425,11 @@ def inicio():
 
         # renderiza o template (seu template Jinja pode usar item.pedido ou item['pedido'])
         return render_template(
-            "inicio.html",
+            "index.html",
             pedidos=pedidos,
             user_html=get_user_html(),
             is_admin=is_admin()
         )
-
     except Exception as e:
         logger.exception("Erro ao carregar pedidos: %s", e)
         traceback.print_exc()

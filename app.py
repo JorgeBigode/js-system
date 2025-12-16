@@ -545,6 +545,11 @@ def cadastro_itens_page():
     """Placeholder para a página de Cadastro de Itens, para resolver o BuildError do menu."""
     return "<h2>Página de Cadastro de Itens (placeholder)</h2>"
 
+@app.route('/material')
+def material_page():
+    """Placeholder para a página de Material, para resolver o BuildError do menu."""
+    return "<h2>Página de Material (placeholder)</h2>"
+
 @app.route('/apontamento_qr')
 def apontamento_qr():
     return "<h2>Apontamento QR (placeholder)</h2>"

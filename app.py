@@ -535,6 +535,11 @@ def pedido():
         is_admin=is_admin()
     )
 
+@app.route('/trilhadeira')
+def trilhadeira_page():
+    """Placeholder para a página da Trilhadeira, para resolver o BuildError do menu."""
+    return "<h2>Página da Trilhadeira (placeholder)</h2>"
+
 @app.route('/apontamento_qr')
 def apontamento_qr():
     return "<h2>Apontamento QR (placeholder)</h2>"

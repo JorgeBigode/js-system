@@ -501,6 +501,9 @@ def pedido():
 
     # Lógica para carregar dados para a página (GET)
     try:
+        # Busca o usuário logado para passar ao template
+        user = db.query(User).filter_by(id=session.get('user_id')).first()
+
         pedidos_sql = text("""
             SELECT 
                 c.idcliente, 
@@ -530,12 +533,15 @@ def pedido():
     except Exception as e:
         logger.exception("Erro ao carregar dados da página: %s", e)
         flash(f"Erro ao carregar dados da página: {e}", "error")
+        # Garante que as variáveis existam mesmo em caso de erro
         pedidos_result = []
         clientes_json = "{}"
+        user = db.query(User).filter_by(id=session.get('user_id')).first()
 
     return render_template(
         'pedidos.html',
         pedidos=pedidos_result,
+        user=user,  # Passa o objeto de usuário para o template
         clientes_json=Markup(clientes_json),
         is_admin=is_admin()
     )

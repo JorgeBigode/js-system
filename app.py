@@ -600,12 +600,18 @@ def create_user_cli():
         db.rollback()
         print("Erro: usuário já existe.")
 
-# Global exception handler (opcional, registra e mostra 500)
+# Global exception handler (registra e mostra 500 para erros não tratados)
+from werkzeug.exceptions import HTTPException
+
 @app.errorhandler(Exception)
 def handle_exception(e):
+    # Passa exceções HTTP (como 404, 401, etc) para o tratamento padrão do Flask
+    if isinstance(e, HTTPException):
+        return e
+
     logger.exception("Unhandled exception: %s", e)
     traceback.print_exc()
-    return "Erro interno no servidor.", 500
+    return "Ocorreu um erro interno no servidor.", 500
 
 if __name__ == '__main__':
     import sys

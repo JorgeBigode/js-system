@@ -501,24 +501,22 @@ def pedido():
 
     # Lógica para carregar dados para a página (GET)
     try:
-        # Busca o usuário logado para passar ao template
-        user = db.query(User).filter_by(id=session.get('user_id')).first()
-
         pedidos_sql = text("""
             SELECT 
-                c.idcliente, 
-                c.pedido as numero_pedido, 
-                vc.nome_cliente as cliente, 
-                vc.endereco,
+                c.idcliente,
+                c.pedido as numero_pedido,
+                ac.cliente as cliente,
+                ac.endereco,
                 c.data_entrega,
                 c.pdf
             FROM cliente c
-            JOIN vinculo_cliente vc ON c.id_vinculo_cliente = vc.id
+            LEFT JOIN add_cliente ac ON c.idcliente = ac.idcliente -- Alterado para usar add_cliente
             ORDER BY c.idcliente DESC
         """)
         pedidos_result = db.execute(pedidos_sql).mappings().all()
 
-        clientes_sql = text("SELECT id, nome_cliente, endereco FROM vinculo_cliente ORDER BY nome_cliente, endereco")
+        # Assumindo que add_cliente tem as colunas necessárias
+        clientes_sql = text("SELECT idcliente as id, cliente as nome_cliente, endereco FROM add_cliente ORDER BY nome_cliente, endereco")
         clientes_result = db.execute(clientes_sql).mappings().all()
         
         clientes_agrupados = {}
@@ -535,13 +533,10 @@ def pedido():
         flash(f"Erro ao carregar dados da página: {e}", "error")
         pedidos_result = []
         clientes_json = "{}"
-        # Garante que o usuário seja definido mesmo em caso de erro
-        user = db.query(User).filter_by(id=session.get('user_id')).first()
 
     return render_template(
         'pedidos.html',
         pedidos=pedidos_result,
-        user=user,  # Passa o objeto de usuário para o template
         clientes_json=Markup(clientes_json),
         is_admin=is_admin()
     )

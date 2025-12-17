@@ -441,8 +441,9 @@ def api_slide_data():
         ORDER BY c.idcliente
         """)
         result = db.execute(sql).mappings().all()
-        # O jsonify converte a lista de dicionários para uma resposta JSON
-        return jsonify(result)
+        # Converte a lista de RowMapping para uma lista de dicionários
+        data = [dict(row) for row in result]
+        return jsonify(data)
     except Exception as e:
         logger.exception("Erro na API /api/slide-data: %s", e)
         return jsonify({"error": "Erro interno ao buscar dados"}), 500

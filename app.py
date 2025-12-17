@@ -448,7 +448,7 @@ def api_slide_data():
         logger.exception("Erro na API /api/slide-data: %s", e)
         return jsonify({"error": "Erro interno ao buscar dados"}), 500
 
-@app.route('/pedido', methods=['GET', 'POST'])
+@app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
 def pedido():
     db = SessionLocal()
     

@@ -501,26 +501,23 @@ def pedido():
 
     # Lógica para carregar dados para a página (GET)
     try:
-        # Busca o usuário logado para passar ao template
-        user = db.query(User).filter_by(id=session.get('user_id')).first()
-
         pedidos_sql = text("""
-            SELECT 
-                c.idcliente, 
-                c.pedido as numero_pedido, 
-                vc.nome_cliente as cliente, 
-                vc.endereco,
+            SELECT
+                c.idcliente,
+                c.pedido as numero_pedido,
+                ac.cliente as cliente,
+                ac.endereco,
                 c.data_entrega,
                 c.pdf
             FROM cliente c
-            JOIN vinculo_cliente vc ON c.id_vinculo_cliente = vc.id
+            JOIN add_cliente ac ON c.idcliente = ac.idcliente
             ORDER BY c.idcliente DESC
         """)
         pedidos_result = db.execute(pedidos_sql).mappings().all()
 
-        clientes_sql = text("SELECT id, nome_cliente, endereco FROM vinculo_cliente ORDER BY nome_cliente, endereco")
+        clientes_sql = text("SELECT idcliente as id, cliente as nome_cliente, endereco FROM add_cliente ORDER BY nome_cliente, endereco")
         clientes_result = db.execute(clientes_sql).mappings().all()
-        
+
         clientes_agrupados = {}
         for cliente in clientes_result:
             nome = cliente['nome_cliente']
@@ -533,15 +530,12 @@ def pedido():
     except Exception as e:
         logger.exception("Erro ao carregar dados da página: %s", e)
         flash(f"Erro ao carregar dados da página: {e}", "error")
-        # Garante que as variáveis existam mesmo em caso de erro
         pedidos_result = []
         clientes_json = "{}"
-        user = db.query(User).filter_by(id=session.get('user_id')).first()
 
     return render_template(
         'pedidos.html',
         pedidos=pedidos_result,
-        user=user,  # Passa o objeto de usuário para o template
         clientes_json=Markup(clientes_json),
         is_admin=is_admin()
     )
@@ -600,18 +594,12 @@ def create_user_cli():
         db.rollback()
         print("Erro: usuário já existe.")
 
-# Global exception handler (registra e mostra 500 para erros não tratados)
-from werkzeug.exceptions import HTTPException
-
+# Global exception handler (opcional, registra e mostra 500)
 @app.errorhandler(Exception)
 def handle_exception(e):
-    # Passa exceções HTTP (como 404, 401, etc) para o tratamento padrão do Flask
-    if isinstance(e, HTTPException):
-        return e
-
     logger.exception("Unhandled exception: %s", e)
     traceback.print_exc()
-    return "Ocorreu um erro interno no servidor.", 500
+    return "Erro interno no servidor.", 500
 
 if __name__ == '__main__':
     import sys

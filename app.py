@@ -448,7 +448,7 @@ def api_slide_data():
         logger.exception("Erro na API /api/slide-data: %s", e)
         return jsonify({"error": "Erro interno ao buscar dados"}), 500
 
-@app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
+@app.route('/pedido', methods=['GET', 'POST'])
 def pedido():
     db = SessionLocal()
     
@@ -459,13 +459,14 @@ def pedido():
     # Lógica de exclusão (GET com parâmetro)
     if request.method == 'GET' and 'delete' in request.args:
         if not is_admin():
-            flash("Você não tem permissão para excluir pedidos.", "error")
-            return redirect(url_for('pedido'))
+            flash("Você não tem permissão para excluir.", "error")
+            return redirect(url_for('pedido')) # Redireciona para a mesma página
         
         pedido_id_to_delete = request.args.get('delete')
         if pedido_id_to_delete:
             try:
-                db.execute(text("DELETE FROM cliente WHERE idcliente = :id"), {'id': pedido_id_to_delete})
+                # Corrigido para deletar da tabela 'pedido' usando 'idpedido'
+                db.execute(text("DELETE FROM pedido WHERE idpedido = :id"), {'id': pedido_id_to_delete})
                 db.commit()
                 flash(f"Pedido {pedido_id_to_delete} excluído com sucesso.", "success")
             except Exception as e:
@@ -482,13 +483,14 @@ def pedido():
         # Criação de Novo Pedido
         else:
             try:
+                # Corrigido para inserir na tabela 'pedido' com as colunas corretas
                 sql = text("""
-                    INSERT INTO cliente (pedido, id_vinculo_cliente, data_entrega) 
-                    VALUES (:pedido, :client_id, :data_entrega)
+                    INSERT INTO pedido (numero_pedido, idcliente, data_entrega, status, data_insercao) 
+                    VALUES (:numero_pedido, :idcliente, :data_entrega, 'pendente', NOW())
                 """)
                 db.execute(sql, {
-                    'pedido': request.form.get('pedido'),
-                    'client_id': request.form.get('client_id'),
+                    'numero_pedido': request.form.get('pedido'),
+                    'idcliente': request.form.get('client_id'),
                     'data_entrega': request.form.get('data_entrega')
                 })
                 db.commit()
@@ -501,42 +503,49 @@ def pedido():
 
     # Lógica para carregar dados para a página (GET)
     try:
+        # Busca o usuário logado para passar ao template
+        user = db.query(User).filter_by(id=session.get('user_id')).first()
+
+        # Corrigido para buscar das tabelas 'pedido' e 'add_cliente'
         pedidos_sql = text("""
             SELECT 
-                c.idcliente,
-                c.pedido as numero_pedido,
-                ac.cliente as cliente,
+                p.idpedido, 
+                p.numero_pedido, 
+                ac.cliente, 
                 ac.endereco,
-                c.data_entrega,
-                c.pdf
-            FROM cliente c
-            LEFT JOIN add_cliente ac ON c.idcliente = ac.idcliente -- Alterado para usar add_cliente
-            ORDER BY c.idcliente DESC
+                p.data_entrega,
+                p.pdf
+            FROM pedido p
+            LEFT JOIN add_cliente ac ON p.idcliente = ac.idcliente
+            ORDER BY p.idpedido DESC
         """)
         pedidos_result = db.execute(pedidos_sql).mappings().all()
 
-        # Assumindo que add_cliente tem as colunas necessárias
-        clientes_sql = text("SELECT idcliente as id, cliente as nome_cliente, endereco FROM add_cliente ORDER BY nome_cliente, endereco")
+        # Corrigido para buscar da tabela 'add_cliente'
+        clientes_sql = text("SELECT idcliente, cliente, endereco FROM add_cliente ORDER BY cliente, endereco")
         clientes_result = db.execute(clientes_sql).mappings().all()
         
         clientes_agrupados = {}
         for cliente in clientes_result:
-            nome = cliente['nome_cliente']
+            nome = cliente['cliente']
             if nome not in clientes_agrupados:
                 clientes_agrupados[nome] = []
-            clientes_agrupados[nome].append({'id': cliente['id'], 'endereco': cliente['endereco']})
+            clientes_agrupados[nome].append({'id': cliente['idcliente'], 'endereco': cliente['endereco']})
 
         clientes_json = json.dumps(clientes_agrupados)
 
     except Exception as e:
         logger.exception("Erro ao carregar dados da página: %s", e)
         flash(f"Erro ao carregar dados da página: {e}", "error")
+        # Garante que as variáveis existam mesmo em caso de erro
         pedidos_result = []
         clientes_json = "{}"
+        user = db.query(User).filter_by(id=session.get('user_id')).first()
 
     return render_template(
         'pedidos.html',
         pedidos=pedidos_result,
+        user=user, # Passa o objeto de usuário para o template
         clientes_json=Markup(clientes_json),
         is_admin=is_admin()
     )

@@ -4,6 +4,7 @@ import secrets
 import hashlib
 import json
 import traceback
+import io
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -26,6 +27,13 @@ import config
 from passlib.context import CryptContext
 from menu_content import get_user_html, is_admin
 from menu import menu_bp
+
+# Import para geração de DOCX
+try:
+    from docxtpl import DocxTemplate
+except ImportError:
+    logger.error("A biblioteca 'docx-template' não está instalada. Execute: pip install docx-template")
+    DocxTemplate = None
 
 # Setup passlib context for multiple hash formats
 pwd_context = CryptContext(
@@ -482,6 +490,77 @@ def api_pedidos():
     except Exception as e:
         logger.exception("Erro na API /api/pedidos: %s", e)
         return jsonify({"error": "Erro interno ao buscar dados de pedidos"}), 500
+
+@app.route('/api/pedidos/<int:pedido_id>/gerar-folha')
+def api_gerar_folha(pedido_id):
+    """Endpoint para gerar a folha de pedido."""
+    if not session.get('user_id'):
+        return jsonify({"error": "Não autorizado"}), 401
+
+    db = SessionLocal()
+    try:
+        if not DocxTemplate:
+            return jsonify({"error": "A biblioteca para gerar documentos não está instalada no servidor."}), 500
+
+        template_path = 'PEDIDO.docx'
+        if not os.path.exists(template_path):
+            logger.error(f"O template '{template_path}' não foi encontrado no diretório da aplicação.")
+            return jsonify({"error": f"O template '{template_path}' não foi encontrado."}), 500
+
+        # 1. Buscar informações do pedido principal
+        pedido_sql = text("""
+            SELECT p.numero_pedido, p.data_entrega, c.cliente, c.endereco
+            FROM pedido p
+            JOIN add_cliente c ON p.idcliente = c.idcliente
+            WHERE p.idpedido = :id
+        """)
+        pedido_info = db.execute(pedido_sql, {'id': pedido_id}).mappings().first()
+
+        if not pedido_info:
+            return jsonify({"error": "Pedido não encontrado"}), 404
+
+        # 2. Buscar produtos/itens do pedido
+        produtos_sql = text("""
+            SELECT 
+                parent.descricao, 
+                SUM(ci.quantidade_prod) as quantidade
+            FROM cliente_item ci
+            JOIN item_composicao ic ON ci.id_composicao = ic.id
+            JOIN itens parent ON ic.id_item_pai = parent.id
+            WHERE ci.idpedido = :id
+            GROUP BY parent.descricao
+        """)
+        produtos_data = db.execute(produtos_sql, {'id': pedido_id}).mappings().all()
+
+        # 3. Preparar o contexto para o template
+        data_entrega_obj = pedido_info.get('data_entrega')
+        data_entrega_str = data_entrega_obj.strftime('%d/%m/%Y') if data_entrega_obj else ''
+
+        context = {
+            'CLIENTE': pedido_info.get('cliente', '').upper(),
+            'ENDERECO': pedido_info.get('endereco', '').upper(),
+            'PEDIDO': pedido_info.get('numero_pedido', ''),
+            'DATA': data_entrega_str,
+            'produtos': [dict(row) for row in produtos_data]
+        }
+
+        # 4. Renderizar o documento em memória
+        doc = DocxTemplate(template_path)
+        doc.render(context)
+
+        # Salvar em um buffer de bytes
+        doc_io = io.BytesIO()
+        doc.save(doc_io)
+        doc_io.seek(0) # Voltar para o início do buffer
+
+        # 5. Enviar o arquivo para download
+        filename = f"Folha_Pedido_{pedido_info.get('numero_pedido', 'desconhecido')}.docx"
+        return send_file(doc_io, as_attachment=True, download_name=filename)
+
+    except Exception as e:
+        logger.exception("Erro ao gerar folha de pedido: %s", e)
+        return jsonify({"error": "Erro interno ao gerar folha de pedido"}), 500
+
 
 @app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
 def pedido():

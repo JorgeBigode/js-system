@@ -28,13 +28,6 @@ from passlib.context import CryptContext
 from menu_content import get_user_html, is_admin
 from menu import menu_bp
 
-# Import para geração de DOCX
-try:
-    from docxtpl import DocxTemplate
-except ImportError:
-    logger.error("A biblioteca 'docx-template' não está instalada. Execute: pip install docx-template")
-    DocxTemplate = None
-
 # Setup passlib context for multiple hash formats
 pwd_context = CryptContext(
     schemes=["bcrypt", "phpass", "md5_crypt", "pbkdf2_sha256"],
@@ -60,6 +53,13 @@ logger = logging.getLogger(__name__)
 app.debug = (os.getenv("RENDER", "0") == "1") or (os.getenv("FLASK_DEBUG", "0") == "1")
 if app.debug:
     logger.warning("Flask debug mode is ENABLED (app.debug=True)")
+
+# Import para geração de DOCX (após a configuração do logger)
+try:
+    from docxtpl import DocxTemplate
+except ImportError:
+    logger.error("A biblioteca 'docx-template' não está instalada. Verifique o requirements.txt.")
+    DocxTemplate = None
 
 # -------------------------
 # Cookie policy (dev vs prod)

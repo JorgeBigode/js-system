@@ -561,6 +561,24 @@ def api_gerar_folha(pedido_id):
         logger.exception("Erro ao gerar folha de pedido: %s", e)
         return jsonify({"error": "Erro interno ao gerar folha de pedido"}), 500
 
+@app.route('/pdfs/<path:filename>')
+def serve_pdf(filename):
+    """Serve arquivos do diretório de PDFs de forma segura."""
+    # 1. Proteção de rota: apenas usuários logados podem acessar
+    if not session.get('user_id'):
+        abort(401) # Não autorizado
+
+    # 2. Define o caminho seguro para o diretório de PDFs
+    # current_app.root_path é o diretório onde app.py está
+    pdf_directory = os.path.join(current_app.root_path, 'pdfs')
+
+    try:
+        # 3. Usa send_from_directory para enviar o arquivo de forma segura
+        # Esta função previne ataques de "directory traversal"
+        return send_from_directory(pdf_directory, filename, as_attachment=False)
+    except FileNotFoundError:
+        logger.warning(f"Tentativa de acesso a PDF não encontrado: {filename}")
+        abort(404) # Arquivo não encontrado
 
 @app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
 def pedido():

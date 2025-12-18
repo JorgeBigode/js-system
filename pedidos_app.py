@@ -1,9 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import customtkinter as ctk
-import pymysql
 from tkcalendar import DateEntry
-from config import DB_HOST, DB_USER, DB_PASS, DB_NAME
+from database import get_db_connection # Assumindo que você criou database.py
 from datetime import datetime
 import os
 try:
@@ -120,16 +119,7 @@ class PedidosApp:
         
     def carregar_pedidos(self):
         try:
-            connection = pymysql.connect(
-                host=DB_HOST,
-                user=DB_USER,
-                password=DB_PASS,
-                database=DB_NAME,
-                charset='utf8mb4',
-                cursorclass=pymysql.cursors.DictCursor
-            )
-            
-            with connection.cursor() as cursor:
+            with get_db_connection() as connection, connection.cursor() as cursor:
                 sql = """
                 SELECT 
                     p.*,
@@ -151,9 +141,6 @@ class PedidosApp:
                 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar pedidos: {str(e)}")
-        finally:
-            if connection:
-                connection.close()
     
     def _preencher_tabela(self, pedidos):
         """Limpa e preenche a tabela com a lista de pedidos fornecida."""
@@ -187,16 +174,7 @@ class PedidosApp:
 
     def carregar_clientes(self):
         try:
-            connection = pymysql.connect(
-                host=DB_HOST,
-                user=DB_USER,
-                password=DB_PASS,
-                database=DB_NAME,
-                charset='utf8mb4',
-                cursorclass=pymysql.cursors.DictCursor
-            )
-            
-            with connection.cursor() as cursor:
+            with get_db_connection() as connection, connection.cursor() as cursor:
                 cursor.execute("SELECT idcliente, cliente, endereco FROM add_cliente ORDER BY cliente, endereco")
                 rows = cursor.fetchall()
                 
@@ -213,9 +191,6 @@ class PedidosApp:
                 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar clientes: {str(e)}")
-        finally:
-            if connection:
-                connection.close()
     
     def verificar_admin(self):
         # Verificar se o usuário é admin
@@ -297,13 +272,7 @@ class PedidosApp:
         idpedido = pedido_info['idpedido']
 
         try:
-            connection = pymysql.connect(
-                host=DB_HOST, user=DB_USER, password=DB_PASS,
-                database=DB_NAME, charset='utf8mb4',
-                cursorclass=pymysql.cursors.DictCursor
-            )
-
-            with connection.cursor() as cursor:
+            with get_db_connection() as connection, connection.cursor() as cursor:
                 # Busca produtos e quantidades (equipamentos pai)
                 sql = """
                     SELECT 
@@ -321,9 +290,6 @@ class PedidosApp:
         except Exception as e:
             messagebox.showerror("Erro de Banco de Dados", f"Erro ao buscar produtos do pedido: {e}")
             return
-        finally:
-            if connection:
-                connection.close()
 
         # Prepara o contexto para o template
         data_entrega_obj = pedido_info.get('data_entrega')
@@ -513,16 +479,7 @@ class PedidosApp:
                 return
 
             try:
-                connection = pymysql.connect(
-                    host=DB_HOST,
-                    user=DB_USER,
-                    password=DB_PASS,
-                    database=DB_NAME,
-                    charset='utf8mb4',
-                    cursorclass=pymysql.cursors.DictCursor
-                )
-                
-                with connection.cursor() as cursor:
+                with get_db_connection() as connection, connection.cursor() as cursor:
                     # Verificar se número de pedido já existe
                     cursor.execute("SELECT COUNT(*) as cnt FROM pedido WHERE numero_pedido = %s", (num,))
                     if cursor.fetchone()['cnt'] > 0:
@@ -561,9 +518,6 @@ class PedidosApp:
                     
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao criar pedido: {str(e)}")
-            finally:
-                if connection:
-                    connection.close()
 
         ctk.CTkLabel(frame, text="PDF do Pedido:").grid(row=4, column=0, sticky=tk.W, pady=5, padx=10)
         pdf_path = tk.StringVar()
@@ -610,35 +564,25 @@ class PedidosApp:
                 messagebox.showerror("Erro", "Nome e endereço são obrigatórios.", parent=modal)
                 return
 
-            connection = None
             try:
-                connection = pymysql.connect(
-                    host=DB_HOST, user=DB_USER, password=DB_PASS,
-                    database=DB_NAME, charset='utf8mb4',
-                    cursorclass=pymysql.cursors.DictCursor
-                )
-                with connection.cursor() as cursor:
-                    # Verificar se a combinação cliente/endereço já existe
-                    sql_check = "SELECT idcliente FROM add_cliente WHERE cliente = %s AND endereco = %s"
-                    cursor.execute(sql_check, (nome, endereco))
-                    if cursor.fetchone():
-                        messagebox.showerror("Erro", "Este cliente com este endereço já existe.", parent=modal)
-                        return
+                with get_db_connection() as connection, connection.cursor() as cursor:
+                        # Verificar se a combinação cliente/endereço já existe
+                        sql_check = "SELECT idcliente FROM add_cliente WHERE cliente = %s AND endereco = %s"
+                        cursor.execute(sql_check, (nome, endereco))
+                        if cursor.fetchone():
+                            messagebox.showerror("Erro", "Este cliente com este endereço já existe.", parent=modal)
+                            return
+                        # Inserir novo cliente
+                        sql_insert = "INSERT INTO add_cliente (cliente, endereco) VALUES (%s, %s)"
+                        cursor.execute(sql_insert, (nome, endereco))
+                        connection.commit()
 
-                    # Inserir novo cliente
-                    sql_insert = "INSERT INTO add_cliente (cliente, endereco) VALUES (%s, %s)"
-                    cursor.execute(sql_insert, (nome, endereco))
-                    connection.commit()
-
-                    messagebox.showinfo("Sucesso", "Cliente adicionado com sucesso!", parent=modal)
-                    self.carregar_clientes()  # Recarrega a lista de clientes na classe principal
-                    modal.destroy()
+                messagebox.showinfo("Sucesso", "Cliente adicionado com sucesso!", parent=modal)
+                self.carregar_clientes()  # Recarrega a lista de clientes na classe principal
+                modal.destroy()
 
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao salvar cliente: {e}", parent=modal)
-            finally:
-                if connection:
-                    connection.close()
         
         button_frame = ctk.CTkFrame(frame, fg_color="transparent")
         button_frame.grid(row=2, column=0, columnspan=2, pady=20)
@@ -826,16 +770,7 @@ class PedidosApp:
                 return
 
             try:
-                connection = pymysql.connect(
-                    host=DB_HOST,
-                    user=DB_USER,
-                    password=DB_PASS,
-                    database=DB_NAME,
-                    charset='utf8mb4',
-                    cursorclass=pymysql.cursors.DictCursor
-                )
-                
-                with connection.cursor() as cursor:
+                with get_db_connection() as connection, connection.cursor() as cursor:
                     # Verificar se número de pedido já existe (excluindo o atual)
                     cursor.execute("SELECT COUNT(*) as cnt FROM pedido WHERE numero_pedido = %s AND idpedido != %s", 
                                   (num, pedido_id))
@@ -858,9 +793,6 @@ class PedidosApp:
                     
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao atualizar pedido: {str(e)}")
-            finally:
-                if connection:
-                    connection.close()
         
         ctk.CTkButton(button_frame, text="Salvar", command=salvar_edicao).pack(side=tk.LEFT, padx=5)
         
@@ -869,16 +801,7 @@ class PedidosApp:
             def excluir_pedido():
                 if messagebox.askyesno("Confirmar", "Tem certeza que deseja excluir este pedido?"):
                     try:
-                        connection = pymysql.connect(
-                            host=DB_HOST,
-                            user=DB_USER,
-                            password=DB_PASS,
-                            database=DB_NAME,
-                            charset='utf8mb4',
-                            cursorclass=pymysql.cursors.DictCursor
-                        )
-                        
-                        with connection.cursor() as cursor:
+                        with get_db_connection() as connection, connection.cursor() as cursor:
                             # Remover arquivo PDF se existir
                             if pedido['pdf'] and os.path.exists(pedido['pdf']):
                                 os.remove(pedido['pdf'])
@@ -893,9 +816,6 @@ class PedidosApp:
                             
                     except Exception as e:
                         messagebox.showerror("Erro", f"Erro ao excluir pedido: {str(e)}")
-                    finally:
-                        if connection:
-                            connection.close()
             
             ctk.CTkButton(button_frame, text="Excluir", command=excluir_pedido, fg_color="red").pack(side=tk.LEFT, padx=5)
         

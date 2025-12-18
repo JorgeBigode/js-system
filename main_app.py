@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox, ttk
 import pymysql
+from passlib.context import CryptContext # Importa o passlib
 from config import DB_HOST, DB_USER, DB_PASS, DB_NAME
 from itertools import cycle
 import threading
@@ -31,6 +32,12 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+# Configura o contexto do passlib para ser compatível com a aplicação web
+pwd_context = CryptContext(
+    schemes=["bcrypt", "phpass", "md5_crypt", "pbkdf2_sha256"],
+    deprecated="auto"
+)
 
 class MainApp:
     def __init__(self, user):

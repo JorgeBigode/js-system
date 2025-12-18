@@ -448,6 +448,41 @@ def api_slide_data():
         logger.exception("Erro na API /api/slide-data: %s", e)
         return jsonify({"error": "Erro interno ao buscar dados"}), 500
 
+@app.route('/api/pedidos')
+def api_pedidos():
+    """Endpoint da API para fornecer a lista de pedidos."""
+    if not session.get('user_id'):
+        return jsonify({"error": "Não autorizado"}), 401
+
+    db = SessionLocal()
+    try:
+        pedidos_sql = text("""
+            SELECT 
+                p.idpedido, 
+                p.numero_pedido, 
+                ac.cliente, 
+                ac.endereco,
+                p.data_entrega,
+                p.pdf
+            FROM pedido p
+            LEFT JOIN add_cliente ac ON p.idcliente = ac.idcliente
+            ORDER BY p.idpedido DESC
+        """)
+        pedidos_result = db.execute(pedidos_sql).mappings().all()
+        
+        # Converte o resultado para uma lista de dicionários, formatando datas
+        data = []
+        for row in pedidos_result:
+            row_dict = dict(row)
+            if isinstance(row_dict.get('data_entrega'), datetime):
+                row_dict['data_entrega'] = row_dict['data_entrega'].strftime('%Y-%m-%d')
+            data.append(row_dict)
+            
+        return jsonify(data)
+    except Exception as e:
+        logger.exception("Erro na API /api/pedidos: %s", e)
+        return jsonify({"error": "Erro interno ao buscar dados de pedidos"}), 500
+
 @app.route('/pedido', methods=['GET', 'POST'], endpoint='pedidos_page')
 def pedido():
     db = SessionLocal()
